@@ -10,12 +10,12 @@ from typing import Any
 @dataclass
 class RiskConfig:
     risk_pct: float = 0.01
-    min_risk_usd: float = 5.0
+    min_risk_usd: float = 10.0
     max_risk_usd: float = 50.0
     max_leverage: float = 2.0
     max_deployed_pct: float = 0.75
     daily_kill_switch_pct: float = -0.10
-    min_collateral_usd: float = 10.0
+    min_collateral_usd: float = 20.0
 
 
 @dataclass

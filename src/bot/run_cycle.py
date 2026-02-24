@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from .config import as_dict, load_config
-from .risk import compute_risk_budget
+from .models import PaperState, Position
+from .paper_engine import execute_paper
+from .risk import compute_risk_budget, plan_from_signal
+from .strategies import choose_signal
 from .storage import candles_path, journal_path, snapshot_path, state_path
 from .utils import jsonl_append, read_json, write_json
 
@@ -52,19 +55,73 @@ def main() -> None:
     cpath = candles_path(args.pair, args.tf_min)
     candles = _load_recent_candles(cpath, limit=args.candle_limit)
 
-    # Minimal paper state for v0
-    state = read_json(state_path(), default={"equity": 10_000.0, "position": None, "daily_pnl": 0.0})
+    raw_state = read_json(state_path(), default={"equity": 10_000.0, "position": None, "daily_pnl": 0.0})
 
-    # v0: do nothing; later: strategy->risk->paper executor
+    # normalize to PaperState
+    pos_raw = raw_state.get("position")
+    pos = None
+    if isinstance(pos_raw, dict):
+        pos = Position(
+            side=pos_raw.get("side"),
+            notional_usd=float(pos_raw.get("notional_usd", 0.0)),
+            collateral_usd=float(pos_raw.get("collateral_usd", 0.0)),
+            leverage=float(pos_raw.get("leverage", 0.0)),
+            entry_price=float(pos_raw.get("entry_price", 0.0)),
+            avg_price=float(pos_raw.get("avg_price", pos_raw.get("entry_price", 0.0))),
+            stop_loss=pos_raw.get("stop_loss"),
+            take_profit=pos_raw.get("take_profit"),
+            opened_ts=int(pos_raw.get("opened_ts", 0)),
+        )
+
+    paper = PaperState(
+        equity=float(raw_state.get("equity", 0.0)),
+        daily_pnl=float(raw_state.get("daily_pnl", 0.0)),
+        position=pos,
+        last_price=raw_state.get("last_price"),
+    )
+
     now_ts = int(datetime.now().timestamp())
 
-    rb = compute_risk_budget(float(state.get("equity", 0.0)), cfg.risk)
+    rb = compute_risk_budget(float(paper.equity), cfg.risk)
+    closes = [float(c["c"]) for c in candles if "c" in c]
+    last_price = closes[-1] if closes else float(paper.last_price or 0.0)
+
+    sig = choose_signal(closes) if closes else None
+
+    if sig is None or last_price <= 0:
+        plan = None
+        action_note = "no candles yet"
+    else:
+        plan = plan_from_signal(signal=sig, candles=candles, last_price=last_price, rb=rb, cfg=cfg.risk)
+        # If we already have a position, upgrade open->scale/hold/flip/close based on direction.
+        if paper.position is None:
+            pass
+        else:
+            if sig.desired == "flat":
+                plan.action = "close"
+                plan.side = paper.position.side
+            else:
+                desired_side = "long" if sig.desired == "long" else "short"
+                if desired_side != paper.position.side:
+                    plan.action = "flip"
+                    plan.side = desired_side
+                else:
+                    # for now: hold (later AI can decide scale)
+                    plan.action = "hold"
+                    plan.side = desired_side
+
+        action_note = plan.note if plan else "no-plan"
+
+    # Execute paper (vol-based slippage is TODO; placeholder uses 2 bps)
+    if plan and last_price > 0:
+        paper = execute_paper(paper, plan, last_price=last_price, slip_bps=2.0, ts=now_ts)
+
     res = CycleResult(
         ts=now_ts,
         pair=args.pair,
         tf_min=args.tf_min,
         status="ok",
-        note=f"v0 scaffold: loaded {len(candles)} candles from {cpath}; no trades executed.",
+        note=f"cycle: candles={len(candles)} last_price={last_price:.2f} action={action_note}",
     )
 
     jpath = journal_path(_today())
@@ -79,7 +136,14 @@ def main() -> None:
             "note": res.note,
             "config": as_dict(cfg),
             "risk_budget": rb.__dict__,
-            "state": state,
+            "state": {
+                "equity": paper.equity,
+                "daily_pnl": paper.daily_pnl,
+                "position": paper.position.__dict__ if paper.position else None,
+                "last_price": paper.last_price,
+            },
+            "signal": sig.__dict__ if sig else None,
+            "plan": plan.__dict__ if plan else None,
             "candles_loaded": len(candles),
         },
     )
@@ -89,16 +153,26 @@ def main() -> None:
         "ts": now_ts,
         "pair": args.pair,
         "tf_min": args.tf_min,
-        "equity": state.get("equity"),
-        "position": state.get("position"),
-        "daily_pnl": state.get("daily_pnl"),
+        "equity": paper.equity,
+        "position": paper.position.__dict__ if paper.position else None,
+        "daily_pnl": paper.daily_pnl,
         "risk_budget": rb.__dict__,
         "candles_loaded": len(candles),
-        "status": "idle",
-        "note": "v0 scaffold (no trading yet)",
+        "signal": sig.__dict__ if sig else None,
+        "plan": plan.__dict__ if plan else None,
+        "status": "idle" if paper.position is None else "in_position",
+        "note": res.note,
     }
 
-    write_json(state_path(), state)
+    write_json(
+        state_path(),
+        {
+            "equity": paper.equity,
+            "daily_pnl": paper.daily_pnl,
+            "position": paper.position.__dict__ if paper.position else None,
+            "last_price": paper.last_price,
+        },
+    )
     write_json(snapshot_path(), snapshot)
 
     print(f"[cycle] wrote journal={jpath} snapshot={snapshot_path()}")
