@@ -1,0 +1,1 @@
+"""Avantis paper bot scaffold."""
