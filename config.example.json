@@ -1,0 +1,33 @@
+{
+  "pair": "ETH/USD",
+  "tf_min": 15,
+
+  "risk": {
+    "risk_pct": 0.01,
+    "min_risk_usd": 5.0,
+    "max_risk_usd": 50.0,
+
+    "max_leverage": 2.0,
+    "max_deployed_pct": 0.75,
+    "daily_kill_switch_pct": -0.10,
+
+    "min_collateral_usd": 10.0
+  },
+
+  "paper": {
+    "slippage": {
+      "base_bps": 2.0,
+      "k_atr": 15.0
+    }
+  },
+
+  "ai": {
+    "enabled": false,
+    "mode": "observer",
+    "allowed_actions": ["suggest_size", "suggest_params"],
+    "hard_limits": {
+      "max_risk_pct": 0.01,
+      "max_leverage": 2.0
+    }
+  }
+}

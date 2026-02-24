@@ -47,11 +47,16 @@ Outputs:
 - `data/state/snapshot.json`
 
 ## Config
-All config is via env vars + CLI flags for now.
+Config is loaded from an optional JSON file:
+
+- set `APB_CONFIG=/path/to/config.json`
+- see `config.example.json`
+
+This is what fixes the "$100 equity → $1 risk" problem: we use **1% risk** with a **USD floor** (e.g., $5) and a **USD ceiling** (e.g., $50), plus a minimum collateral.
 
 Planned:
-- `config.yaml` for strategy + risk params
-- separate process supervision (systemd/docker) for the feed listener
+- switch to YAML later if we want
+- add process supervision (systemd/docker) for the feed listener
 
 ## Disclaimer
 This code is for research/paper simulation. No financial advice.

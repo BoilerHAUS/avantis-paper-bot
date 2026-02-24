@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .config import as_dict, load_config
+from .risk import compute_risk_budget
 from .storage import candles_path, journal_path, snapshot_path, state_path
 from .utils import jsonl_append, read_json, write_json
 
@@ -39,9 +41,11 @@ def _load_recent_candles(path: Path, limit: int = 200) -> list[dict[str, Any]]:
 
 
 def main() -> None:
+    cfg = load_config()
+
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pair", default="ETH/USD")
-    ap.add_argument("--tf-min", type=int, default=15)
+    ap.add_argument("--pair", default=cfg.pair)
+    ap.add_argument("--tf-min", type=int, default=cfg.tf_min)
     ap.add_argument("--candle-limit", type=int, default=200)
     args = ap.parse_args()
 
@@ -53,6 +57,8 @@ def main() -> None:
 
     # v0: do nothing; later: strategy->risk->paper executor
     now_ts = int(datetime.now().timestamp())
+
+    rb = compute_risk_budget(float(state.get("equity", 0.0)), cfg.risk)
     res = CycleResult(
         ts=now_ts,
         pair=args.pair,
@@ -62,16 +68,21 @@ def main() -> None:
     )
 
     jpath = journal_path(_today())
-    jsonl_append(jpath, {
-        "type": "cycle",
-        "ts": res.ts,
-        "pair": res.pair,
-        "tf_min": res.tf_min,
-        "status": res.status,
-        "note": res.note,
-        "state": state,
-        "candles_loaded": len(candles),
-    })
+    jsonl_append(
+        jpath,
+        {
+            "type": "cycle",
+            "ts": res.ts,
+            "pair": res.pair,
+            "tf_min": res.tf_min,
+            "status": res.status,
+            "note": res.note,
+            "config": as_dict(cfg),
+            "risk_budget": rb.__dict__,
+            "state": state,
+            "candles_loaded": len(candles),
+        },
+    )
 
     # Snapshot for dashboard
     snapshot = {
@@ -81,6 +92,7 @@ def main() -> None:
         "equity": state.get("equity"),
         "position": state.get("position"),
         "daily_pnl": state.get("daily_pnl"),
+        "risk_budget": rb.__dict__,
         "candles_loaded": len(candles),
         "status": "idle",
         "note": "v0 scaffold (no trading yet)",
