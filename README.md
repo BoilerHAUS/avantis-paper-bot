@@ -58,5 +58,24 @@ Planned:
 - switch to YAML later if we want
 - add process supervision (systemd/docker) for the feed listener
 
+## GOAT knowledge base (trading doctrine)
+This repo includes optional tooling to index and query the **GOAT Crypto Trading Agent Pack** (reading list + checklists) as a local-first knowledge base.
+
+Tools live in:
+- `tools/goat_kb/`
+
+Quick start:
+```bash
+python3 tools/goat_kb/goat_kb_index.py \
+  --root /home/boilerrat/clawd/knowledge/GOAT_Crypto_Trading_Agent_Pack \
+  --db  /home/boilerrat/clawd/state/goat_kb.db
+
+python3 tools/goat_kb/goat_kb_query.py --q "PBO" --limit 5
+```
+
+Notes:
+- This is a **keyword (SQLite+FTS5) index**; vector/embeddings can be added later if needed.
+- The pack itself is not committed here by default.
+
 ## Disclaimer
 This code is for research/paper simulation. No financial advice.
