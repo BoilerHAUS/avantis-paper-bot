@@ -9,10 +9,24 @@ from typing import Any
 
 @dataclass
 class RiskConfig:
+    # Baseline risk target (still clamped by min/max below)
     risk_pct: float = 0.01
+
+    # Risk clamps (USD)
     min_risk_usd: float = 10.0
     max_risk_usd: float = 50.0
+
+    # Optional risk clamps as % of equity (bootstrap mode)
+    # If set, effective clamp becomes:
+    #   min = max(min_risk_usd, equity * min_risk_pct)
+    #   max = min(max_risk_usd, equity * max_risk_pct)
+    min_risk_pct: float | None = None
+    max_risk_pct: float | None = None
+
+    # Leverage caps
     max_leverage: float = 2.0
+
+    # Execution / exposure caps
     max_deployed_pct: float = 0.75
     daily_kill_switch_pct: float = -0.10
     min_collateral_usd: float = 20.0
@@ -48,6 +62,8 @@ def load_config() -> BotConfig:
         risk_pct=float(r.get("risk_pct", cfg.risk.risk_pct)),
         min_risk_usd=float(r.get("min_risk_usd", cfg.risk.min_risk_usd)),
         max_risk_usd=float(r.get("max_risk_usd", cfg.risk.max_risk_usd)),
+        min_risk_pct=(None if r.get("min_risk_pct") is None else float(r.get("min_risk_pct"))),
+        max_risk_pct=(None if r.get("max_risk_pct") is None else float(r.get("max_risk_pct"))),
         max_leverage=float(r.get("max_leverage", cfg.risk.max_leverage)),
         max_deployed_pct=float(r.get("max_deployed_pct", cfg.risk.max_deployed_pct)),
         daily_kill_switch_pct=float(r.get("daily_kill_switch_pct", cfg.risk.daily_kill_switch_pct)),

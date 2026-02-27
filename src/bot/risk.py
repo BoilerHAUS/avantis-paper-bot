@@ -40,7 +40,21 @@ def compute_risk_budget(equity_usd: float, cfg: RiskConfig) -> RiskBudget:
         )
 
     raw = equity_usd * cfg.risk_pct
-    risk_usd = max(cfg.min_risk_usd, min(cfg.max_risk_usd, raw))
+
+    # Clamp by USD bounds first
+    min_usd = cfg.min_risk_usd
+    max_usd = cfg.max_risk_usd
+
+    # Optional % of equity clamps (bootstrap mode)
+    if cfg.min_risk_pct is not None:
+        min_usd = max(min_usd, equity_usd * cfg.min_risk_pct)
+    if cfg.max_risk_pct is not None:
+        max_usd = min(max_usd, equity_usd * cfg.max_risk_pct)
+
+    # Safety: ensure max >= min
+    max_usd = max(max_usd, min_usd)
+
+    risk_usd = max(min_usd, min(max_usd, raw))
     risk_pct_effective = risk_usd / equity_usd
 
     return RiskBudget(
@@ -126,7 +140,44 @@ def plan_from_signal(
     target_notional = min(raw_notional, max_notional)
 
     # pick leverage up to cap; set collateral accordingly
-    leverage = min(cfg.max_leverage, max(1.0, target_notional / cfg.min_collateral_usd))
+    # Tier leverage by confidence (bootstrap): 5x should be rare.
+    conf = float(getattr(signal, "confidence", 0.0) or 0.0)
+
+    def _tiered_max(confidence: float) -> float:
+        if confidence < 0.60:
+            return 0.0
+        if confidence < 0.74:
+            return 2.0
+        if confidence < 0.84:
+            return 3.0
+        if confidence < 0.92:
+            return 4.0
+        return 5.0
+
+    tier_cap = _tiered_max(conf)
+
+    # Strategy-specific caps
+    strat = str(getattr(signal, "strategy", ""))
+    if "mean_reversion" in strat:
+        tier_cap = min(tier_cap, 3.0)
+
+    max_lev_allowed = min(cfg.max_leverage, tier_cap if tier_cap > 0 else cfg.max_leverage)
+
+    leverage = min(max_lev_allowed, max(1.0, target_notional / cfg.min_collateral_usd))
+    # If tiering says "skip", force a hold.
+    if max_lev_allowed <= 0:
+        return OrderPlan(
+            action="hold",
+            side=None,
+            target_notional_usd=0.0,
+            collateral_usd=0.0,
+            leverage=0.0,
+            stop_loss=None,
+            take_profit=None,
+            risk_usd=0.0,
+            note=f"skip: conf={conf:.2f} below threshold ({signal.strategy})",
+        )
+
     collateral = max(cfg.min_collateral_usd, target_notional / leverage)
     leverage = target_notional / collateral if collateral > 0 else 0.0
 
