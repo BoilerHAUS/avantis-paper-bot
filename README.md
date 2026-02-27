@@ -56,7 +56,29 @@ This is what fixes the "$100 equity → $1 risk" problem: we use **1% risk** wit
 
 Planned:
 - switch to YAML later if we want
-- add process supervision (systemd/docker) for the feed listener
+- add stronger supervision/alerts around the long-running services
+
+## Docker (no runtime pip install)
+This repo includes a Docker image build that installs both dependencies and the package at image build time.
+Containers run the bot directly and do **not** `pip install` on startup, so the runtime pip warning spam is removed.
+
+Prereqs:
+- `bootstrap.json` should exist (you can copy from `config.example.json`)
+
+Build and run:
+```bash
+cp config.example.json bootstrap.json
+docker compose build
+docker compose up -d
+```
+
+Services:
+- `apb-feed`: `python -m bot.feed_listener --pair ETH/USD --tf-min 15`
+- `apb-cycle`: runs `python -m bot.run_cycle --pair ETH/USD --tf-min 15` every 15 minutes
+
+Both services mount:
+- `./data` → `/var/lib/avantis-paper-bot/data`
+- `./bootstrap.json` → `/var/lib/avantis-paper-bot/bootstrap.json` (read-only)
 
 ## GOAT knowledge base (trading doctrine)
 This repo includes optional tooling to index and query the **GOAT Crypto Trading Agent Pack** (reading list + checklists) as a local-first knowledge base.

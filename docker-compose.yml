@@ -1,0 +1,32 @@
+services:
+  apb-feed:
+    build: .
+    image: avantis-paper-bot:latest
+    command: ["python", "-m", "bot.feed_listener", "--pair", "ETH/USD", "--tf-min", "15"]
+    environment:
+      APB_DATA_DIR: /var/lib/avantis-paper-bot/data
+      APB_CONFIG: /var/lib/avantis-paper-bot/bootstrap.json
+      FEED_MODE: ${FEED_MODE:-hermes}
+      PYTH_HERMES_URL: ${PYTH_HERMES_URL:-https://hermes.pyth.network}
+      AVANTIS_WS_URL: ${AVANTIS_WS_URL:-}
+    volumes:
+      - ./data:/var/lib/avantis-paper-bot/data
+      - ./bootstrap.json:/var/lib/avantis-paper-bot/bootstrap.json:ro
+    restart: unless-stopped
+
+  apb-cycle:
+    build: .
+    image: avantis-paper-bot:latest
+    command:
+      [
+        "sh",
+        "-lc",
+        "while true; do python -m bot.run_cycle --pair 'ETH/USD' --tf-min 15; sleep 900; done",
+      ]
+    environment:
+      APB_DATA_DIR: /var/lib/avantis-paper-bot/data
+      APB_CONFIG: /var/lib/avantis-paper-bot/bootstrap.json
+    volumes:
+      - ./data:/var/lib/avantis-paper-bot/data
+      - ./bootstrap.json:/var/lib/avantis-paper-bot/bootstrap.json:ro
+    restart: unless-stopped
