@@ -10,7 +10,10 @@ Paper-first trading bot scaffold for **Avantis perps** (starting with **ETH/USD*
 This repo is intentionally built so the 15-minute trade loop can run **without any LLM dependency**. AI monitoring can be layered on later as a slower observer.
 
 ## Status
-This is a **scaffold**: feed listener + candle aggregation + storage layout are implemented; strategies/risk/paper executor are placeholders.
+This is a **scaffold**: feed listener + candle aggregation + storage layout are implemented; deterministic strategies + risk + paper execution exist but are still early-stage (v0.1).
+
+Docs:
+- See `docs/architecture.md` for how longs/shorts are determined and how sizing works.
 
 ## Quickstart
 ### 1) Create a venv + install deps
