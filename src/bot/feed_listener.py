@@ -52,17 +52,18 @@ async def main_async(pair: str, tf_min: int) -> None:
         if closed:
             jsonl_append(out_path, closed.as_dict())
             print(
-                f"[candle] closed {pair} {tf_min}m @ {closed.start_ts} o={closed.o} h={closed.h} l={closed.l} c={closed.c} ticks={closed.ticks}"
+                f"[candle] closed {pair} {tf_min}m @ {closed.start_ts} o={closed.o} h={closed.h} l={closed.l} c={closed.c} ticks={closed.ticks}",
+                flush=True,
             )
 
     if mode == "avantis":
         ws_url = _default_ws_url()
 
         def on_ws_error(e: Exception) -> None:
-            print(f"[feed] websocket error: {e}")
+            print(f"[feed] websocket error: {e}", flush=True)
 
         def on_ws_close(e: Exception) -> None:
-            print(f"[feed] websocket closed: {e}")
+            print(f"[feed] websocket closed: {e}", flush=True)
 
         feed = FeedClient(ws_url, on_error=on_ws_error, on_close=on_ws_close)
 
@@ -98,7 +99,7 @@ async def main_async(pair: str, tf_min: int) -> None:
 
             on_tick(ts, price_f)
 
-        print(f"[feed] mode=avantis connecting ws={ws_url} pair={pair} tf={tf_min}m -> {out_path}")
+        print(f"[feed] mode=avantis connecting ws={ws_url} pair={pair} tf={tf_min}m -> {out_path}", flush=True)
         feed.register_price_feed_callback(pair, on_price)
         await feed.listen_for_price_updates()
 
@@ -111,15 +112,27 @@ async def main_async(pair: str, tf_min: int) -> None:
         price_id = await hc.resolve_price_id(pair)
 
         print(
-            f"[feed] mode=hermes base={base} price_id={price_id} pair={pair} tf={tf_min}m -> {out_path}"
+            f"[feed] mode=hermes base={base} price_id={price_id} pair={pair} tf={tf_min}m -> {out_path}",
+            flush=True,
         )
 
-        try:
-            async for hp in hc.stream_price(price_id):
-                on_tick(hp.ts, hp.price)
-        except (httpx.HTTPError, Exception) as e:
-            print(f"[feed] hermes error: {e}")
-            raise
+        # Hermes streaming can drop (e.g. incomplete chunked read). Reconnect instead of exiting.
+        backoff_s = 1.0
+        while True:
+            try:
+                async for hp in hc.stream_price(price_id):
+                    on_tick(hp.ts, hp.price)
+                print("[feed] hermes stream ended; reconnecting", flush=True)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print(
+                    f"[feed] hermes error: {type(e).__name__}: {e} (reconnect in {backoff_s:.1f}s)",
+                    flush=True,
+                )
+
+            await asyncio.sleep(backoff_s)
+            backoff_s = min(backoff_s * 2.0, 30.0)
 
 
 def main() -> None:

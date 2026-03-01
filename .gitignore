@@ -10,3 +10,6 @@ __pycache__/
 
 # data outputs
 data/
+
+# local bootstrap config
+bootstrap.json

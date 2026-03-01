@@ -59,6 +59,8 @@ Planned:
 - add stronger supervision/alerts around the long-running services
 
 ## Docker (no runtime pip install)
+
+Note: the Hermes stream can occasionally drop. The feed listener auto-reconnects with exponential backoff.
 This repo includes a Docker image build that installs both dependencies and the package at image build time.
 Containers run the bot directly and do **not** `pip install` on startup, so the runtime pip warning spam is removed.
 
