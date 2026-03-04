@@ -80,8 +80,9 @@ docker compose up -d
 Services:
 - `apb-feed`: `python -m bot.feed_listener --pair ETH/USD --tf-min 15`
 - `apb-cycle`: runs `python -m bot.run_cycle --pair ETH/USD --tf-min 15` every 15 minutes
+- `apb-dashboard`: read-only web dashboard on port `3030` (serves status/timeline from `./data`)
 
-Both services mount:
+Both bot services mount:
 - `./data` → `/var/lib/avantis-paper-bot/data`
 - `./bootstrap.json` → `/var/lib/avantis-paper-bot/bootstrap.json` (read-only)
 

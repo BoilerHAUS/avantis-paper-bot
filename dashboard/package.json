@@ -1,0 +1,15 @@
+{
+  "name": "paper-bot-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "VPS dashboard/control plane (v1 read-only) for Avantis Paper Bot",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

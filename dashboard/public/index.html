@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Avantis Paper Bot — Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@2/css/pico.min.css">
+  <style>
+    :root { --pico-font-size: 95%; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+    @media (max-width: 900px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+    .card { padding: 1rem; border: 1px solid var(--pico-muted-border-color); border-radius: 10px; }
+    .pill { display:inline-block; padding:0.2rem 0.55rem; border-radius:999px; font-size:0.85rem; border:1px solid var(--pico-muted-border-color); }
+    .pill.ok { background: rgba(0, 200, 0, 0.10); border-color: rgba(0,200,0,0.35); }
+    .pill.bad { background: rgba(200, 0, 0, 0.10); border-color: rgba(200,0,0,0.35); }
+    .muted { color: var(--pico-muted-color); }
+    .nowrap { white-space: nowrap; }
+    .toast { position: fixed; right: 16px; bottom: 16px; max-width: 420px; z-index: 9999; display:none; }
+    .toast .card { background: var(--pico-background-color); box-shadow: 0 6px 24px rgba(0,0,0,0.20); }
+    button[disabled], input[disabled], select[disabled], textarea[disabled] { opacity: 0.65; }
+    .section-title { display:flex; align-items:center; justify-content:space-between; gap: 1rem; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header style="margin-top: 1rem;">
+      <hgroup>
+        <h1>Avantis Paper Bot</h1>
+        <p class="muted">V1 dashboard (read-only data + full control layout stubbed)</p>
+      </hgroup>
+      <div class="grid2">
+        <div class="card">
+          <div class="section-title">
+            <h3 style="margin:0">Status</h3>
+            <span id="overallHealth" class="pill">loading…</span>
+          </div>
+          <hr />
+          <div class="grid3">
+            <div>
+              <div class="muted">Position</div>
+              <div><strong id="posLabel">—</strong></div>
+              <div class="muted" id="posDetails">—</div>
+            </div>
+            <div>
+              <div class="muted">Equity</div>
+              <div><strong id="equity">—</strong></div>
+              <div class="muted">Daily PnL: <span id="dailyPnl">—</span></div>
+            </div>
+            <div>
+              <div class="muted">Candles loaded</div>
+              <div><strong id="candlesLoaded">—</strong></div>
+            </div>
+          </div>
+          <hr />
+          <div class="grid2">
+            <div>
+              <div class="muted">Last cycle</div>
+              <div><strong id="lastCycleTs">—</strong></div>
+              <div class="muted" id="lastCycleNote">—</div>
+            </div>
+            <div>
+              <div class="muted">Last trade</div>
+              <div><strong id="lastTradeTs">—</strong></div>
+              <div class="muted">Time since last trade: <span id="sinceTrade">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">
+            <h3 style="margin:0">Health</h3>
+            <span class="muted nowrap" id="paths">loading paths…</span>
+          </div>
+          <hr />
+          <div class="grid2">
+            <div>
+              <div><strong>Snapshot</strong> <span id="snapshotPill" class="pill">—</span></div>
+              <div class="muted">mtime: <span id="snapshotMtime">—</span></div>
+              <div class="muted">stale: <span id="snapshotStale">—</span></div>
+              <div class="muted" id="snapshotErr"></div>
+            </div>
+            <div>
+              <div><strong>Journal</strong> <span id="journalPill" class="pill">—</span></div>
+              <div class="muted">mtime: <span id="journalMtime">—</span></div>
+              <div class="muted">stale: <span id="journalStale">—</span></div>
+              <div class="muted" id="journalErr"></div>
+            </div>
+          </div>
+          <hr />
+          <details>
+            <summary>Debug</summary>
+            <pre id="debug" style="max-height: 260px; overflow:auto;">—</pre>
+          </details>
+        </div>
+      </div>
+    </header>
+
+    <section class="card" style="margin-top:1rem;">
+      <div class="section-title">
+        <h3 style="margin:0">Chart (candles + trade markers)</h3>
+        <span class="muted">v2 visuals</span>
+      </div>
+      <div id="candleChart" style="height: 360px;"></div>
+      <small class="muted" id="chartStatus"></small>
+      <div class="muted" id="markerLegend" style="margin-top:0.4rem;">Legend: OPEN 🟢 · CLOSE 🟡 · FLIP 🟣 · SCALE 🔵</div>
+      <div style="margin-top:0.45rem;" class="muted">
+        <label><input type="checkbox" id="showSmaFast" checked /> Show SMA 20</label>
+        <label style="margin-left:1rem;"><input type="checkbox" id="showSmaSlow" checked /> Show SMA 50</label>
+      </div>
+      <hr />
+      <h4 style="margin-top:0">Equity curve</h4>
+      <div id="equityChart" style="height: 180px;"></div>
+      <h4 style="margin-top:0.8rem">PnL per cycle</h4>
+      <div id="pnlChart" style="height: 140px;"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <h3 style="margin:0">Timeline (last ~20 cycles)</h3>
+        <div class="muted">UTC date: <span id="utcDate">—</span></div>
+      </div>
+      <hr />
+      <div style="overflow:auto;">
+        <table role="grid">
+          <thead>
+            <tr>
+              <th class="nowrap">ts</th>
+              <th>plan.action</th>
+              <th class="nowrap">price</th>
+              <th>note</th>
+              <th>position</th>
+              <th class="nowrap">equity</th>
+            </tr>
+          </thead>
+          <tbody id="timelineBody">
+            <tr><td colspan="6" class="muted">loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="grid2" style="margin-top:1rem;">
+      <section class="card">
+        <div class="section-title">
+          <h3 style="margin:0">Trading mode</h3>
+          <span class="pill">Layout only (v1)</span>
+        </div>
+        <p class="muted">Controls exist but are not wired to any backend actions yet.</p>
+
+        <fieldset>
+          <label>
+            <input type="checkbox" disabled />
+            Live mode (requires confirmation)
+          </label>
+          <small class="muted">TODO: confirmation modal + backend endpoint. Must remain not wired in v1.</small>
+        </fieldset>
+
+        <div class="grid2">
+          <button data-notwired disabled>Pause trading</button>
+          <button data-notwired disabled>Resume trading</button>
+        </div>
+        <small class="muted">TODO: wire to safe pause/resume flag; no live trading in v1.</small>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <h3 style="margin:0">Pairs</h3>
+          <span class="pill">Layout only (v1)</span>
+        </div>
+        <ul>
+          <li><label><input type="checkbox" checked disabled /> ETH/USD (15m)</label></li>
+        </ul>
+
+        <form>
+          <label>
+            Add pair
+            <input type="text" placeholder="e.g., BTC/USD" disabled />
+          </label>
+          <button data-notwired disabled type="button">Add (not wired)</button>
+          <small class="muted">TODO: validate pair + update bot config + restart services safely.</small>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <h3 style="margin:0">Risk config</h3>
+          <span class="pill">Partial (v1)</span>
+        </div>
+        <p class="muted">In v1, this panel is read-only/stubbed. Do not change risk params without explicit approval.</p>
+        <details>
+          <summary>Current risk config (stub)</summary>
+          <pre class="muted">TODO: read from config file if available.
+Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, daily kill -10% equity.</pre>
+        </details>
+
+        <form>
+          <div class="grid2">
+            <label>Per-trade risk (%)
+              <input type="number" value="1" disabled />
+            </label>
+            <label>Max leverage
+              <input type="number" value="2" disabled />
+            </label>
+          </div>
+          <button data-notwired disabled type="button">Save (not wired)</button>
+          <small class="muted">TODO: backend endpoint + approvals workflow.</small>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <h3 style="margin:0">Ops</h3>
+          <span class="pill">Layout only (v1)</span>
+        </div>
+        <div class="grid3">
+          <button data-notwired disabled type="button">Restart feed</button>
+          <button data-notwired disabled type="button">Restart cycle</button>
+          <button data-notwired disabled type="button">Rebuild containers</button>
+        </div>
+        <small class="muted">TODO: wire to safe server-side actions with auth. Not wired in v1.</small>
+
+        <hr />
+        <h4>Paths (operator)</h4>
+        <ul class="muted">
+          <li>Compose dir: <code>/etc/dokploy/compose/avantis-paper-bot-nsnxrq/code/</code></li>
+          <li>Compose file: <code>/etc/dokploy/compose/avantis-paper-bot-nsnxrq/code/docker-compose.yml</code></li>
+          <li>Bootstrap: <code>/etc/dokploy/compose/avantis-paper-bot-nsnxrq/code/bootstrap.json</code></li>
+          <li>Host data dir: <code>/etc/dokploy/compose/avantis-paper-bot-nsnxrq/code/data/</code></li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <h3 style="margin:0">Alerts</h3>
+          <span class="pill">Layout only (v1)</span>
+        </div>
+        <p class="muted">v1 shows expected schedule; editing thresholds is not wired.</p>
+        <ul>
+          <li>15m event monitor (script): <code>/tmp/apb_notify_last_cycle.sh</code></li>
+          <li>Daily summaries: <code>/tmp/apb_daily_summary.sh</code> (05:30 + 17:30 UTC)</li>
+          <li>Cron: <code>crontab -l</code></li>
+        </ul>
+        <form>
+          <label>
+            Stale threshold (minutes)
+            <input type="number" value="20" disabled />
+          </label>
+          <button data-notwired disabled type="button">Save alert thresholds (not wired)</button>
+          <small class="muted">TODO: config storage + restart monitor jobs.</small>
+        </form>
+      </section>
+    </section>
+
+    <section class="card" style="margin-top:1rem;">
+      <div class="section-title">
+        <h3 style="margin:0">Strategy (read-only)</h3>
+        <span class="pill">New</span>
+      </div>
+      <p class="muted">Current strategy defaults + latest signal reasoning from the most recent cycle.</p>
+      <div class="grid3">
+        <div><div class="muted">Trend fast SMA</div><strong id="strFast">—</strong></div>
+        <div><div class="muted">Trend slow SMA</div><strong id="strSlow">—</strong></div>
+        <div><div class="muted">MR window / z</div><strong id="strMr">—</strong></div>
+      </div>
+      <div class="grid2" style="margin-top:0.75rem;">
+        <div><div class="muted">Latest signal</div><strong id="strLatest">—</strong></div>
+        <div><div class="muted">Latest note</div><span id="strNote" class="muted">—</span></div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:1rem;">
+      <div class="section-title">
+        <h3 style="margin:0">Operator report (daily)</h3>
+        <span class="pill">New</span>
+      </div>
+      <p class="muted">Quick ops summary for today (UTC). Useful for seeing if feed/cycle were stale and whether any non-hold actions occurred.</p>
+      <div class="grid3">
+        <div><div class="muted">Cycles today</div><strong id="repCycles">—</strong></div>
+        <div><div class="muted">Actions</div><strong id="repActions">—</strong></div>
+        <div><div class="muted">Desired signal mix</div><strong id="repDesired">—</strong></div>
+      </div>
+      <div class="grid3" style="margin-top:0.75rem;">
+        <div><div class="muted">Candles needed</div><strong id="repNeed">—</strong></div>
+        <div><div class="muted">Candles loaded</div><strong id="repLoad">—</strong></div>
+        <div><div class="muted">Candles remaining</div><strong id="repRemain">—</strong></div>
+      </div>
+      <div class="grid3" style="margin-top:0.75rem;">
+        <div><div class="muted">Last trade ts</div><strong id="repLastTrade">—</strong></div>
+        <div><div class="muted">Feed stale (min)</div><strong id="repFeedStale">—</strong></div>
+        <div><div class="muted">Cycle stale (min)</div><strong id="repCycleStale">—</strong></div>
+      </div>
+    </section>
+
+    <footer class="muted" style="margin: 2rem 0 2rem 0;">
+      <small>
+        No secrets in frontend bundle. No live trading actions in v1.
+      </small>
+    </footer>
+  </main>
+
+  <div class="toast" id="toast">
+    <div class="card">
+      <strong>Not wired yet</strong>
+      <div class="muted" id="toastMsg">This control is present for layout, but v1 does not implement actions.</div>
+      <div style="margin-top:0.5rem;">
+        <button class="secondary" id="toastClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    let candleChart, candleSeries, smaFastSeries, smaSlowSeries, equityChart, equitySeries, pnlChart, pnlSeries;
+
+    function initCharts() {
+      if (!window.LightweightCharts) {
+        $('chartStatus').textContent = 'Chart library failed to load.';
+        return;
+      }
+      if (!candleChart) {
+        candleChart = LightweightCharts.createChart($('candleChart'), {
+          layout: { background: { color: 'transparent' }, textColor: '#cbd5e1' },
+          grid: { vertLines: { color: 'rgba(148,163,184,0.15)' }, horzLines: { color: 'rgba(148,163,184,0.15)' } },
+          rightPriceScale: { borderColor: 'rgba(148,163,184,0.25)' },
+          timeScale: { borderColor: 'rgba(148,163,184,0.25)' }
+        });
+        if (typeof candleChart.addCandlestickSeries === 'function') {
+          candleSeries = candleChart.addCandlestickSeries();
+          smaFastSeries = candleChart.addLineSeries({ color: '#f59e0b', lineWidth: 2 });
+          smaSlowSeries = candleChart.addLineSeries({ color: '#a78bfa', lineWidth: 2 });
+        } else if (typeof candleChart.addSeries === 'function' && LightweightCharts.CandlestickSeries) {
+          candleSeries = candleChart.addSeries(LightweightCharts.CandlestickSeries, {});
+          if (LightweightCharts.LineSeries) {
+            smaFastSeries = candleChart.addSeries(LightweightCharts.LineSeries, { color: '#f59e0b', lineWidth: 2 });
+            smaSlowSeries = candleChart.addSeries(LightweightCharts.LineSeries, { color: '#a78bfa', lineWidth: 2 });
+          }
+        }
+      }
+      if (!equityChart) {
+        equityChart = LightweightCharts.createChart($('equityChart'), {
+          layout: { background: { color: 'transparent' }, textColor: '#cbd5e1' },
+          grid: { vertLines: { color: 'rgba(148,163,184,0.15)' }, horzLines: { color: 'rgba(148,163,184,0.15)' } },
+          rightPriceScale: { borderColor: 'rgba(148,163,184,0.25)' },
+          timeScale: { borderColor: 'rgba(148,163,184,0.25)' }
+        });
+        if (typeof equityChart.addLineSeries === 'function') {
+          equitySeries = equityChart.addLineSeries({ color: '#58a6ff', lineWidth: 2 });
+        } else if (typeof equityChart.addSeries === 'function' && LightweightCharts.LineSeries) {
+          equitySeries = equityChart.addSeries(LightweightCharts.LineSeries, { color: '#58a6ff', lineWidth: 2 });
+        }
+      }
+      if (!pnlChart) {
+        pnlChart = LightweightCharts.createChart($('pnlChart'), {
+          layout: { background: { color: 'transparent' }, textColor: '#cbd5e1' },
+          grid: { vertLines: { color: 'rgba(148,163,184,0.15)' }, horzLines: { color: 'rgba(148,163,184,0.15)' } },
+          rightPriceScale: { borderColor: 'rgba(148,163,184,0.25)' },
+          timeScale: { borderColor: 'rgba(148,163,184,0.25)' }
+        });
+        if (typeof pnlChart.addHistogramSeries === 'function') {
+          pnlSeries = pnlChart.addHistogramSeries({ color: '#58a6ff', base: 0 });
+        } else if (typeof pnlChart.addSeries === 'function' && LightweightCharts.HistogramSeries) {
+          pnlSeries = pnlChart.addSeries(LightweightCharts.HistogramSeries, { color: '#58a6ff', base: 0 });
+        }
+      }
+    }
+
+    function showToast(msg) {
+      const toast = $('toast');
+      $('toastMsg').textContent = msg || 'Not wired yet.';
+      toast.style.display = 'block';
+      window.clearTimeout(window.__toastTimer);
+      window.__toastTimer = window.setTimeout(() => toast.style.display = 'none', 3500);
+    }
+
+    $('toastClose').addEventListener('click', () => $('toast').style.display = 'none');
+
+    document.querySelectorAll('[data-notwired]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        showToast('Not wired yet (v1). TODO: backend endpoint + auth + approvals.');
+      });
+    });
+
+    ['showSmaFast', 'showSmaSlow'].forEach((id) => {
+      const el = $(id);
+      if (el) el.addEventListener('change', () => tick());
+    });
+
+    function fmtMoney(x) {
+      if (x === null || x === undefined || x === '') return '—';
+      const n = Number(x);
+      if (Number.isNaN(n)) return String(x);
+      return n.toLocaleString(undefined, { style:'currency', currency:'USD', maximumFractionDigits: 2 });
+    }
+
+    function fmtNum(x) {
+      if (x === null || x === undefined || x === '') return '—';
+      const n = Number(x);
+      if (Number.isNaN(n)) return String(x);
+      return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+    }
+
+    function fmtTs(x) {
+      if (!x) return '—';
+      let d;
+      if (typeof x === 'string') {
+        d = new Date(x);
+      } else {
+        const n = Number(x);
+        const ms = n < 10_000_000_000 ? n * 1000 : n; // epoch sec -> ms
+        d = new Date(ms);
+      }
+      if (Number.isNaN(d.getTime())) return '—';
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Toronto',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(d).replace(',', '') + ' ET';
+    }
+
+    function utcDate() {
+      const d = new Date();
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth()+1).padStart(2,'0');
+      const day = String(d.getUTCDate()).padStart(2,'0');
+      return `${y}-${m}-${day}`;
+    }
+
+    function setPill(el, ok, text) {
+      el.classList.remove('ok','bad');
+      el.classList.add(ok ? 'ok' : 'bad');
+      el.textContent = text;
+    }
+
+    function minsSinceIso(iso) {
+      if (!iso) return null;
+      const t = Date.parse(iso);
+      if (Number.isNaN(t)) return null;
+      return Math.max(0, Math.round((Date.now() - t) / 60000));
+    }
+
+    function smaSeries(candles, period) {
+      const out = [];
+      if (!Array.isArray(candles)) return out;
+      for (let i = 0; i < candles.length; i++) {
+        if (i + 1 < period) continue;
+        const window = candles.slice(i + 1 - period, i + 1);
+        const avg = window.reduce((sum, c) => sum + Number(c.close || 0), 0) / period;
+        out.push({ time: candles[i].time, value: avg });
+      }
+      return out;
+    }
+
+    async function loadAll() {
+      const meta = await fetch('/api/meta').then(r => r.json());
+      $('paths').textContent = `${meta.snapshotPath} | ${meta.journalDir}`;
+      $('utcDate').textContent = utcDate();
+
+      const status = await fetch('/api/status').then(r => r.json());
+      const timeline = await fetch(`/api/timeline?date=${encodeURIComponent(utcDate())}&max=200`).then(r => r.json());
+      const report = await fetch(`/api/report/daily?date=${encodeURIComponent(utcDate())}`).then(r => r.json());
+      const chart = await fetch(`/api/chart?date=${encodeURIComponent(utcDate())}`).then(r => r.json());
+      const strategy = await fetch('/api/strategy').then(r => r.json());
+
+      // Health
+      const snapOk = status.snapshot && !status.snapshot.isStale && status.snapshot.stat && status.snapshot.stat.ok && !status.snapshot.parseError;
+      const jourOk = timeline.journal && !timeline.journal.isStale && timeline.journal.stat && timeline.journal.stat.ok && !timeline.journal.parseError;
+
+      setPill($('snapshotPill'), snapOk, snapOk ? 'OK' : 'STALE');
+      setPill($('journalPill'), jourOk, jourOk ? 'OK' : 'STALE');
+
+      $('snapshotMtime').textContent = status.snapshot?.stat?.mtimeMs ? fmtTs(new Date(status.snapshot.stat.mtimeMs).toISOString()) : '—';
+      $('snapshotStale').textContent = (status.snapshot?.minsStale !== null && status.snapshot?.minsStale !== undefined) ? `${status.snapshot.minsStale} min` : '—';
+      $('snapshotErr').textContent = status.snapshot?.parseError ? `parseError: ${status.snapshot.parseError}` : (status.snapshot?.stat?.ok ? '' : `statError: ${status.snapshot?.stat?.error || 'unknown'}`);
+
+      $('journalMtime').textContent = timeline.journal?.stat?.mtimeMs ? fmtTs(new Date(timeline.journal.stat.mtimeMs).toISOString()) : '—';
+      $('journalStale').textContent = (timeline.journal?.minsStale !== null && timeline.journal?.minsStale !== undefined) ? `${timeline.journal.minsStale} min` : '—';
+      $('journalErr').textContent = timeline.journal?.parseError ? `parseError: ${timeline.journal.parseError}` : (timeline.journal?.stat?.ok ? '' : `statError: ${timeline.journal?.stat?.error || 'unknown'}`);
+
+      const overallOk = snapOk && jourOk;
+      setPill($('overallHealth'), overallOk, overallOk ? 'HEALTHY' : 'ATTN');
+
+      // Status panel
+      const s = status.status;
+      $('posLabel').textContent = s?.position?.label || '—';
+      const detailParts = [];
+      if (s?.position?.notional !== null && s?.position?.notional !== undefined) detailParts.push(`notional: ${fmtMoney(s.position.notional)}`);
+      if (s?.position?.leverage !== null && s?.position?.leverage !== undefined) detailParts.push(`lev: ${fmtNum(s.position.leverage)}`);
+      $('posDetails').textContent = detailParts.length ? detailParts.join(' · ') : '—';
+
+      $('equity').textContent = fmtMoney(s?.equity);
+      $('dailyPnl').textContent = fmtMoney(s?.daily_pnl);
+      $('candlesLoaded').textContent = (s?.candles_loaded !== null && s?.candles_loaded !== undefined) ? fmtNum(s.candles_loaded) : '—';
+
+      $('lastCycleTs').textContent = fmtTs(s?.last_cycle?.timestamp);
+      $('lastCycleNote').textContent = s?.last_cycle?.note ? String(s.last_cycle.note) : '—';
+
+      const lt = timeline.lastTrade;
+      const ltTs = lt?.timestamp || lt?.ts || lt?.cycle_ts || lt?.time || null;
+      $('lastTradeTs').textContent = fmtTs(ltTs);
+      const mins = minsSinceIso(typeof ltTs === 'string' ? ltTs : (ltTs ? new Date(ltTs).toISOString() : null));
+      $('sinceTrade').textContent = (mins === null) ? '—' : `${mins} min`;
+
+      // Timeline
+      const body = $('timelineBody');
+      body.innerHTML = '';
+      const events = (timeline.events || []).slice(-20);
+      if (!events.length) {
+        body.innerHTML = '<tr><td colspan="6" class="muted">No events found.</td></tr>';
+      } else {
+        for (const ev of events) {
+          const tr = document.createElement('tr');
+          const ts = ev.timestamp || ev.ts || ev.cycle_ts || ev.time || '';
+          const action = ev?.plan?.action || '';
+          const note = ev?.note || ev?.plan?.note || '';
+          const pos = ev?.state?.position?.side || ev?.state?.position?.label || ev?.position?.side || '';
+          const eq = ev?.state?.equity ?? ev?.equity ?? '';
+          const price = ev?.state?.last_price ?? ev?.last_price ?? ev?.price ?? '';
+
+          tr.innerHTML = `
+            <td class="nowrap">${ts ? fmtTs(ts) : '—'}</td>
+            <td>${action || '—'}</td>
+            <td class="nowrap">${price !== '' ? fmtNum(price) : '—'}</td>
+            <td>${note ? String(note).slice(0, 120) : '—'}</td>
+            <td>${pos || '—'}</td>
+            <td class="nowrap">${eq !== '' ? fmtMoney(eq) : '—'}</td>
+          `;
+          body.appendChild(tr);
+        }
+      }
+
+      // Charts
+      initCharts();
+      if (candleSeries) {
+        const cData = chart?.candles || [];
+        candleSeries.setData(cData);
+        const markers = chart?.markers || [];
+        if (typeof candleSeries.setMarkers === 'function') {
+          candleSeries.setMarkers(markers);
+        } else if (typeof LightweightCharts.createSeriesMarkers === 'function') {
+          LightweightCharts.createSeriesMarkers(candleSeries, markers);
+        }
+
+        const fastOn = $('showSmaFast')?.checked;
+        const slowOn = $('showSmaSlow')?.checked;
+        if (smaFastSeries) smaFastSeries.setData(fastOn ? smaSeries(cData, 20) : []);
+        if (smaSlowSeries) smaSlowSeries.setData(slowOn ? smaSeries(cData, 50) : []);
+
+        candleChart.timeScale().fitContent();
+        $('chartStatus').textContent = cData.length ? `Loaded ${cData.length} candles${markers.length ? `, ${markers.length} trade markers` : ''}.` : 'No candle data yet.';
+      } else {
+        $('chartStatus').textContent = 'Chart series unavailable (library API mismatch).';
+      }
+      if (equitySeries) {
+        equitySeries.setData(chart?.equity || []);
+        equityChart.timeScale().fitContent();
+      }
+      if (pnlSeries) {
+        const pdata = (chart?.pnl || []).map(p => ({ ...p, color: p.value >= 0 ? '#3fb950' : '#f85149' }));
+        pnlSeries.setData(pdata);
+        pnlChart.timeScale().fitContent();
+      }
+
+      // Strategy panel
+      const st = strategy?.strategy || {};
+      const latest = strategy?.latestSignal || {};
+      $('strFast').textContent = st.trend_fast ?? '—';
+      $('strSlow').textContent = st.trend_slow ?? '—';
+      $('strMr').textContent = `${st.mr_window ?? '—'} / ${st.mr_entry_z ?? '—'}`;
+      $('strLatest').textContent = latest.desired ? `${latest.desired} (${latest.strategy || 'n/a'}, conf=${fmtNum(latest.confidence)})` : '—';
+      $('strNote').textContent = latest.note || '—';
+
+      // Operator daily report
+      const rs = report?.summary || {};
+      $('repCycles').textContent = (rs.cycleCount ?? '—');
+      $('repActions').textContent = rs.actions ? Object.entries(rs.actions).map(([k,v]) => `${k}:${v}`).join(' · ') : '—';
+      $('repDesired').textContent = rs.desired ? Object.entries(rs.desired).map(([k,v]) => `${k}:${v}`).join(' · ') : '—';
+      $('repNeed').textContent = (rs.candlesNeeded ?? '—');
+      $('repLoad').textContent = (rs.candlesLoaded ?? '—');
+      $('repRemain').textContent = (rs.candlesRemaining ?? '—');
+      $('repLastTrade').textContent = fmtTs(rs.lastTradeTs);
+      $('repFeedStale').textContent = (rs.candlesMinsStale ?? '—');
+      $('repCycleStale').textContent = (rs.journalMinsStale ?? '—');
+
+      $('debug').textContent = JSON.stringify({ meta, status, timeline, report, chart, strategy }, null, 2);
+    }
+
+    async function tick() {
+      try {
+        await loadAll();
+      } catch (e) {
+        console.error(e);
+        showToast(`Failed to load data: ${e?.message || e}`);
+      }
+    }
+
+    tick();
+    setInterval(tick, 15000);
+  </script>
+</body>
+</html>
