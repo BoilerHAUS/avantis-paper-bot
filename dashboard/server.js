@@ -155,6 +155,49 @@ function isoOrNull(x) {
   return null;
 }
 
+async function pathExists(p) {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function startDataMountSelfHeal() {
+  const intervalMs = parseInt(process.env.MOUNT_CHECK_INTERVAL_MS || '30000', 10);
+  const graceMs = parseInt(process.env.MOUNT_CHECK_GRACE_MS || '45000', 10);
+  const maxMisses = parseInt(process.env.MOUNT_CHECK_MAX_MISSES || '3', 10);
+
+  let misses = 0;
+  let checks = 0;
+
+  setInterval(async () => {
+    checks += 1;
+
+    // give mounts a short grace period after startup/redeploy
+    if (checks * intervalMs < graceMs) return;
+
+    const snapshotDirOk = await pathExists(path.dirname(SNAPSHOT_PATH));
+    const journalDirOk = await pathExists(JOURNAL_DIR);
+
+    if (snapshotDirOk && journalDirOk) {
+      misses = 0;
+      return;
+    }
+
+    misses += 1;
+    console.warn(
+      `[mount-check] miss ${misses}/${maxMisses} snapshotDirOk=${snapshotDirOk} journalDirOk=${journalDirOk}`
+    );
+
+    if (misses >= maxMisses) {
+      console.error('[mount-check] data mount appears unhealthy; exiting for container auto-restart');
+      process.exit(1);
+    }
+  }, intervalMs);
+}
+
 app.get('/api/strategy', async (_req, res) => {
   const date = utcDateString();
   const journalPath = await listJournalFile(date);
@@ -439,4 +482,5 @@ app.listen(PORT, () => {
   console.log(`SNAPSHOT_PATH=${SNAPSHOT_PATH}`);
   console.log(`JOURNAL_DIR=${JOURNAL_DIR}`);
   console.log(`CANDLES_PATH=${CANDLES_PATH}`);
+  startDataMountSelfHeal();
 });
