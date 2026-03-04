@@ -22,7 +22,7 @@ services:
       AVANTIS_WS_URL: ${AVANTIS_WS_URL:-}
     volumes:
       - ./data:/var/lib/avantis-paper-bot/data
-      - ./bootstrap.json:/var/lib/avantis-paper-bot/bootstrap.json:ro
+      - ./config.example.json:/var/lib/avantis-paper-bot/bootstrap.json:ro
     restart: unless-stopped
 
   apb-cycle:
@@ -39,5 +39,5 @@ services:
       APB_CONFIG: /var/lib/avantis-paper-bot/bootstrap.json
     volumes:
       - ./data:/var/lib/avantis-paper-bot/data
-      - ./bootstrap.json:/var/lib/avantis-paper-bot/bootstrap.json:ro
+      - ./config.example.json:/var/lib/avantis-paper-bot/bootstrap.json:ro
     restart: unless-stopped
