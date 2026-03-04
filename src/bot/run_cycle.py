@@ -55,7 +55,7 @@ def main() -> None:
     cpath = candles_path(args.pair, args.tf_min)
     candles = _load_recent_candles(cpath, limit=args.candle_limit)
 
-    raw_state = read_json(state_path(), default={"equity": 10_000.0, "position": None, "daily_pnl": 0.0})
+    raw_state = read_json(state_path(), default={"equity": 100.0, "position": None, "daily_pnl": 0.0})
 
     # normalize to PaperState
     pos_raw = raw_state.get("position")
