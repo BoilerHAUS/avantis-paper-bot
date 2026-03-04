@@ -4,10 +4,10 @@ services:
     image: paper-bot-dashboard:latest
     environment:
       PORT: 3030
-      SNAPSHOT_PATH: /data/state/snapshot.json
-      JOURNAL_DIR: /data/journal
+      SNAPSHOT_PATH: /var/lib/avantis-paper-bot/data/state/snapshot.json
+      JOURNAL_DIR: /var/lib/avantis-paper-bot/data/journal
     volumes:
-      - ./data:/data:ro
+      - ./data:/var/lib/avantis-paper-bot/data:ro
     restart: unless-stopped
 
   apb-feed:
