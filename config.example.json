@@ -3,13 +3,13 @@
   "tf_min": 15,
 
   "risk": {
-    "risk_pct": 0.01,
+    "risk_pct": 0.03,
     "min_risk_usd": 10.0,
-    "max_risk_usd": 50.0,
+    "max_risk_usd": 25.0,
 
     "max_leverage": 2.0,
-    "max_deployed_pct": 0.75,
-    "daily_kill_switch_pct": -0.10,
+    "max_deployed_pct": 0.50,
+    "daily_kill_switch_pct": -0.08,
 
     "min_collateral_usd": 20.0
   },
