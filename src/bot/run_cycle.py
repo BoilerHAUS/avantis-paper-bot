@@ -71,6 +71,9 @@ def main() -> None:
             stop_loss=pos_raw.get("stop_loss"),
             take_profit=pos_raw.get("take_profit"),
             opened_ts=int(pos_raw.get("opened_ts", 0)),
+            initial_notional_usd=(None if pos_raw.get("initial_notional_usd") is None else float(pos_raw.get("initial_notional_usd"))),
+            partial_taken=bool(pos_raw.get("partial_taken", False)),
+            trail_distance=(None if pos_raw.get("trail_distance") is None else float(pos_raw.get("trail_distance"))),
         )
 
     paper = PaperState(
@@ -86,7 +89,7 @@ def main() -> None:
     closes = [float(c["c"]) for c in candles if "c" in c]
     last_price = closes[-1] if closes else float(paper.last_price or 0.0)
 
-    sig = choose_signal(closes) if closes else None
+    sig = choose_signal(candles) if closes else None
 
     if sig is None or last_price <= 0:
         plan = None

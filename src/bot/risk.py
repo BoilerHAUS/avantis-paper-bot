@@ -111,12 +111,13 @@ def plan_from_signal(
         note_atr = f"atr14={a:.2f} stop_dist={stop_dist:.2f}"
 
     # stop price
+    # v1 management: partial TP at 1.5R, remaining half trails by ~2 ATR
     if side == "long":
         stop = last_price - stop_dist
-        tp = last_price + stop_dist * 2.0
+        tp = last_price + stop_dist * 1.5
     else:
         stop = last_price + stop_dist
-        tp = last_price - stop_dist * 2.0
+        tp = last_price - stop_dist * 1.5
 
     # position notional such that loss at stop ~= risk_usd
     stop_pct = abs((last_price - stop) / last_price)
@@ -190,5 +191,5 @@ def plan_from_signal(
         stop_loss=float(stop),
         take_profit=float(tp),
         risk_usd=float(rb.risk_usd),
-        note=f"{signal.strategy} conf={signal.confidence:.2f} {note_atr}",
+        note=f"{signal.strategy} conf={signal.confidence:.2f} {note_atr} tp=1.5R trail=2ATR",
     )

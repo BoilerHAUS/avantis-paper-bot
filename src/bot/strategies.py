@@ -1,23 +1,16 @@
-"""Deterministic strategies (v0.1).
+"""Deterministic strategies (v0.2).
 
-We start with simple, debuggable signals on 15m candles.
-The goal is a baseline system the AI layer can *modify within bounds*,
-not replace.
-
-Trend (default):
-- fast/slow SMA cross + slope proxy
-
-Mean reversion:
-- z-score of close vs SMA window
-
-Both return a normalized Signal.
+Adds a weighted blend with trend-day regime detection:
+- Trend signal (fast/slow SMA + slope)
+- Mean-reversion signal (z-score)
+- Regime gate combines MA-structure + ADX strength
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .indicators import sma, zscore
+from .indicators import adx, sma, zscore
 from .models import Signal
 
 
@@ -28,6 +21,17 @@ class StrategyConfig:
     mr_window: int = 50
     mr_entry_z: float = 1.5
 
+    # Weighted blend behavior
+    trend_weight: float = 1.0
+    mr_weight: float = 1.0
+    trend_weight_in_regime: float = 1.35  # medium priority
+
+    # Combined trend-day regime filter
+    adx_n: int = 14
+    adx_threshold: float = 20.0
+    min_spread_ratio: float = 0.0015  # |fast-slow|/slow
+    min_slope_ratio: float = 0.0008
+
 
 def trend_signal(closes: list[float], cfg: StrategyConfig) -> Signal:
     f = sma(closes, cfg.trend_fast)
@@ -35,7 +39,6 @@ def trend_signal(closes: list[float], cfg: StrategyConfig) -> Signal:
     if f is None or s is None:
         return Signal(desired="flat", confidence=0.0, strategy="trend", note="insufficient candles")
 
-    # crude slope proxy: fast SMA delta over 3 bars
     if len(closes) < cfg.trend_fast + 3:
         slope = 0.0
     else:
@@ -43,10 +46,10 @@ def trend_signal(closes: list[float], cfg: StrategyConfig) -> Signal:
         slope = (f - f_prev) / f_prev if f_prev else 0.0
 
     if f > s and slope > 0:
-        conf = min(1.0, abs(slope) * 50)
+        conf = min(1.0, abs(slope) * 70)
         return Signal(desired="long", confidence=conf, strategy="trend", note=f"fast>slo & slope={slope:.4f}")
     if f < s and slope < 0:
-        conf = min(1.0, abs(slope) * 50)
+        conf = min(1.0, abs(slope) * 70)
         return Signal(desired="short", confidence=conf, strategy="trend", note=f"fast<slo & slope={slope:.4f}")
 
     return Signal(desired="flat", confidence=0.3, strategy="trend", note=f"mixed (fast={f:.2f} slow={s:.2f} slope={slope:.4f})")
@@ -67,17 +70,66 @@ def mean_reversion_signal(closes: list[float], cfg: StrategyConfig) -> Signal:
     return Signal(desired="flat", confidence=0.4, strategy="mean_reversion", note=f"z={z:.2f} (neutral)")
 
 
-def choose_signal(closes: list[float], cfg: StrategyConfig | None = None) -> Signal:
+def _trend_regime(closes: list[float], highs: list[float], lows: list[float], cfg: StrategyConfig) -> tuple[bool, str]:
+    f = sma(closes, cfg.trend_fast)
+    s = sma(closes, cfg.trend_slow)
+    if f is None or s is None or s == 0:
+        return False, "insufficient ma"
+
+    if len(closes) < cfg.trend_fast + 3:
+        slope = 0.0
+    else:
+        f_prev = sma(closes[:-3], cfg.trend_fast) or f
+        slope = (f - f_prev) / f_prev if f_prev else 0.0
+
+    spread = abs((f - s) / s)
+    a = adx(highs, lows, closes, n=cfg.adx_n)
+    if a is None:
+        return False, "insufficient adx"
+
+    ok = a >= cfg.adx_threshold and spread >= cfg.min_spread_ratio and abs(slope) >= cfg.min_slope_ratio
+    return ok, f"adx={a:.1f} spread={spread:.4f} slope={slope:.4f}"
+
+
+def choose_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Signal:
     cfg = cfg or StrategyConfig()
+    closes = [float(c["c"]) for c in candles if "c" in c]
+    highs = [float(c["h"]) for c in candles if "h" in c]
+    lows = [float(c["l"]) for c in candles if "l" in c]
+
+    if not closes:
+        return Signal(desired="flat", confidence=0.0, strategy="combo", note="no candles")
+
     t = trend_signal(closes, cfg)
     m = mean_reversion_signal(closes, cfg)
+    regime_on, regime_note = _trend_regime(closes, highs, lows, cfg)
 
-    # Simple resolver:
-    # - if both agree on direction, take it
-    # - else prefer trend when trend confidence >= MR confidence
-    if t.desired == m.desired and t.desired != "flat":
-        return Signal(desired=t.desired, confidence=max(t.confidence, m.confidence), strategy="combo", note=f"agree: {t.note} | {m.note}")
+    tw = cfg.trend_weight_in_regime if regime_on else cfg.trend_weight
+    mw = cfg.mr_weight
 
-    if t.confidence >= m.confidence:
-        return t
-    return m
+    long_score = 0.0
+    short_score = 0.0
+
+    if t.desired == "long":
+        long_score += t.confidence * tw
+    elif t.desired == "short":
+        short_score += t.confidence * tw
+
+    if m.desired == "long":
+        long_score += m.confidence * mw
+    elif m.desired == "short":
+        short_score += m.confidence * mw
+
+    if long_score <= 0 and short_score <= 0:
+        return Signal(desired="flat", confidence=0.35, strategy="combo", note=f"both flat | {regime_note}")
+
+    if long_score > short_score + 0.05:
+        conf = min(1.0, long_score / (tw + mw))
+        return Signal(desired="long", confidence=conf, strategy="combo", note=f"weighted long ({regime_note})")
+
+    if short_score > long_score + 0.05:
+        conf = min(1.0, short_score / (tw + mw))
+        return Signal(desired="short", confidence=conf, strategy="combo", note=f"weighted short ({regime_note})")
+
+    # tie/noisy area
+    return Signal(desired="flat", confidence=0.4, strategy="combo", note=f"tie/noise ({regime_note})")

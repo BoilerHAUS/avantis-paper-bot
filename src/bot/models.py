@@ -39,6 +39,10 @@ class Position:
     stop_loss: Optional[float]
     take_profit: Optional[float]
     opened_ts: int
+    # v0.2 trade management
+    initial_notional_usd: Optional[float] = None
+    partial_taken: bool = False
+    trail_distance: Optional[float] = None
 
 
 @dataclass
