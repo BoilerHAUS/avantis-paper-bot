@@ -6,8 +6,9 @@ services:
       PORT: 3030
       SNAPSHOT_PATH: /var/lib/avantis-paper-bot/data/state/snapshot.json
       JOURNAL_DIR: /var/lib/avantis-paper-bot/data/journal
+      CANDLES_PATH: /var/lib/avantis-paper-bot/data/candles/ETH-USD-15m.jsonl
     volumes:
-      - ./data:/var/lib/avantis-paper-bot/data:ro
+      - apb_data:/var/lib/avantis-paper-bot/data:ro
     restart: unless-stopped
 
   apb-feed:
@@ -21,7 +22,7 @@ services:
       PYTH_HERMES_URL: ${PYTH_HERMES_URL:-https://hermes.pyth.network}
       AVANTIS_WS_URL: ${AVANTIS_WS_URL:-}
     volumes:
-      - ./data:/var/lib/avantis-paper-bot/data
+      - apb_data:/var/lib/avantis-paper-bot/data
       - ./config.example.json:/var/lib/avantis-paper-bot/bootstrap.json:ro
     restart: unless-stopped
 
@@ -38,6 +39,9 @@ services:
       APB_DATA_DIR: /var/lib/avantis-paper-bot/data
       APB_CONFIG: /var/lib/avantis-paper-bot/bootstrap.json
     volumes:
-      - ./data:/var/lib/avantis-paper-bot/data
+      - apb_data:/var/lib/avantis-paper-bot/data
       - ./config.example.json:/var/lib/avantis-paper-bot/bootstrap.json:ro
     restart: unless-stopped
+
+volumes:
+  apb_data:

@@ -82,9 +82,11 @@ Services:
 - `apb-cycle`: runs `python -m bot.run_cycle --pair ETH/USD --tf-min 15` every 15 minutes
 - `apb-dashboard`: read-only web dashboard on port `3030` (serves status/timeline from `./data`)
 
-Both bot services mount:
-- `./data` → `/var/lib/avantis-paper-bot/data`
-- `./bootstrap.json` → `/var/lib/avantis-paper-bot/bootstrap.json` (read-only)
+Both bot services mount persistent data volume:
+- `apb_data` → `/var/lib/avantis-paper-bot/data`
+- `./config.example.json` → `/var/lib/avantis-paper-bot/bootstrap.json` (read-only)
+
+Dashboard also reads from the same persistent `apb_data` volume so candles/journal/state survive redeploys.
 
 ## GOAT knowledge base (trading doctrine)
 This repo includes optional tooling to index and query the **GOAT Crypto Trading Agent Pack** (reading list + checklists) as a local-first knowledge base.
