@@ -2,9 +2,10 @@
 set -euo pipefail
 
 # Requires: gh auth login + admin rights on repo
-OWNER="boilerhaus"
+OWNER="BoilerHAUS"
 REPO="avantis-paper-bot"
-BRANCH="main"
+# Use actual default branch name (repo currently uses "Main")
+BRANCH="$(gh repo view ${OWNER}/${REPO} --json defaultBranchRef -q .defaultBranchRef.name)"
 
 gh api \
   --method PUT \
