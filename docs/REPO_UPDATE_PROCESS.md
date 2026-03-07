@@ -52,7 +52,7 @@ Label required: `risk-change`
 
 ## Deploy policy
 
-- Deploy only from merged `main`
+- Deploy only from merged `Main`
 - Run preflight checks from `boilerclaw/LIVE_RUNBOOK.md`
 - If any check fails: rollback/revert first, then debug
 
@@ -71,3 +71,14 @@ Flow:
 
 - CODEOWNERS defines required reviewers for sensitive paths.
 - If reviewer unavailable, wait unless incident severity demands hotfix path.
+
+
+### Branch protection verification
+
+After applying protections, run:
+
+```bash
+./scripts/check-branch-protection.sh
+```
+
+Expected: `✅ branch protection baseline checks passed`

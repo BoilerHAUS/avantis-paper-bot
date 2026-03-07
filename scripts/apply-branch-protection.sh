@@ -11,11 +11,12 @@ gh api \
   --method PUT \
   -H "Accept: application/vnd.github+json" \
   "/repos/${OWNER}/${REPO}/branches/${BRANCH}/protection" \
-  -f required_status_checks.strict=true \
+  -F required_status_checks.strict=true \
+  -f "required_status_checks[contexts][]=lint-and-smoke" \
   -f enforce_admins=true \
   -f required_pull_request_reviews.dismiss_stale_reviews=true \
   -f required_pull_request_reviews.require_code_owner_reviews=true \
-  -f required_pull_request_reviews.required_approving_review_count=1 \
+  -F required_pull_request_reviews.required_approving_review_count=1 \
   -f restrictions= \
   -f required_linear_history=true \
   -f allow_force_pushes=false \
