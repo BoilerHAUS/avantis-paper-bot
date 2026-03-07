@@ -31,6 +31,13 @@ Every PR must include:
 - Rollback plan
 - Validation evidence (logs/screenshots/commands)
 
+### Required CI checks
+
+The following check must pass before merge:
+- `lint-and-smoke` (GitHub Actions `CI` workflow)
+
+If this check is red, do not merge.
+
 ## Risk-change policy (trading-critical)
 
 Any change touching these requires explicit review:
