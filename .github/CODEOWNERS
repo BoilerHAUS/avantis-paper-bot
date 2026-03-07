@@ -1,0 +1,12 @@
+# Default owners
+* @boiler @boilermolt
+
+# Trading core / risk-sensitive paths
+bot/* @boiler @boilermolt
+config.example.json @boiler @boilermolt
+
+# Deployment / infra
+Dockerfile @boiler @boilermolt
+docker-compose.yml @boiler @boilermolt
+boilerclaw/* @boiler @boilermolt
+scripts/* @boiler @boilermolt
