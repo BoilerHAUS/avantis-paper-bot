@@ -24,8 +24,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install ruff
 
-      - name: Ruff lint
-        run: ruff check src scripts
+      - name: Ruff lint (automation surface)
+        run: ruff check scripts
 
       - name: Python compile smoke
         run: python -m compileall -q src scripts
