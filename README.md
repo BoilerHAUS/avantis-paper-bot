@@ -1,22 +1,61 @@
-# Avantis Paper Bot (v0)
+# avantis paper bot
 
-Paper-first trading bot scaffold for **Avantis perps** (starting with **ETH/USD**) with:
-- Continuous **Pyth/Avantis feed → 15m candle builder**
-- **Deterministic** strategies (trend + mean reversion) — *stubbed in v0*
-- **Risk manager**: 1% equity risk/trade, max 2x leverage, max 75% deployed, -10% daily kill switch — *stubbed in v0*
-- **Paper execution engine** (sim fills + vol-based slippage) — *stubbed in v0*
-- Append-only **journal** + dashboard **snapshot** outputs
+paper-first trading system for **avantis perps** (currently `ETH/USD`) focused on reliability, risk controls, and observable operations.
 
-This repo is intentionally built so the 15-minute trade loop can run **without any LLM dependency**. AI monitoring can be layered on later as a slower observer.
+---
 
-## Status
-This is a **scaffold**: feed listener + candle aggregation + storage layout are implemented; deterministic strategies + risk + paper execution exist but are still early-stage (v0.1).
+## what this repo is
 
-Docs:
-- See `docs/architecture.md` for how longs/shorts are determined and how sizing works.
+this repo runs a complete paper-trading loop:
 
-## Quickstart
-### 1) Create a venv + install deps
+1. **feed listener** ingests live price stream and closes 15m candles
+2. **cycle runner** evaluates strategy + risk + execution plan every 15m
+3. **paper execution** updates position/equity state (no live capital)
+4. **journal + snapshot** persist every cycle for auditability
+5. **dashboard** visualizes current state and recent behavior
+
+all core decisions run without LLM dependency in the hot path.
+
+---
+
+## current status
+
+- ✅ `apb-feed`, `apb-cycle`, and `apb-dashboard` running in production-like paper mode
+- ✅ data path standardized on host bind mount:
+  - `/var/lib/avantis-paper-bot/data`
+- ✅ dashboard and chart flow recovered and stable after mount-path fixes
+- ✅ issue-first collaboration workflow active in `BoilerHAUS`
+- ⚠️ still paper-first; live trading remains gated by runbook/checklist
+
+see:
+- `boilerclaw/LIVE_RUNBOOK.md`
+- `/home/boiler/.openclaw/workspace/LIVE_CHECKLIST.md` (ops companion checklist)
+
+---
+
+## architecture (high level)
+
+```text
+market stream
+   -> feed listener
+   -> candles (jsonl)
+   -> cycle (strategy + risk + paper execution)
+   -> journal/state snapshot
+   -> dashboard
+```
+
+key persisted outputs:
+- `data/candles/ETH-USD-15m.jsonl`
+- `data/journal/YYYY-MM-DD.jsonl`
+- `data/state/current.json`
+- `data/state/snapshot.json`
+
+---
+
+## quickstart (local)
+
+### 1) install
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -24,88 +63,75 @@ pip install -U pip
 pip install -e .
 ```
 
-### 2) Run the feed listener (continuous)
-You need a websocket endpoint for the Avantis/Pyth feed.
+### 2) run feed listener
 
-Set:
-- `AVANTIS_WS_URL` (e.g. `wss://...`)
-
-Then:
 ```bash
 export AVANTIS_WS_URL="wss://YOUR_ENDPOINT"
 python -m bot.feed_listener --pair "ETH/USD" --tf-min 15
 ```
 
-This writes append-only candles to:
-- `data/candles/ETH-USD-15m.jsonl`
+### 3) run one cycle manually
 
-### 3) Run one cycle (manual)
 ```bash
 python -m bot.run_cycle --pair "ETH/USD" --tf-min 15
 ```
 
-Outputs:
-- `data/journal/YYYY-MM-DD.jsonl`
-- `data/state/current.json`
-- `data/state/snapshot.json`
+---
 
-## Config
-Config is loaded from an optional JSON file:
+## docker deployment
 
-- set `APB_CONFIG=/path/to/config.json`
-- see `config.example.json`
-
-This is what fixes the "$100 equity → $1 risk" problem: we use **1% risk** with a **USD floor** (e.g., $5) and a **USD ceiling** (e.g., $50), plus a minimum collateral.
-
-Planned:
-- switch to YAML later if we want
-- add stronger supervision/alerts around the long-running services
-
-## Docker (no runtime pip install)
-
-Note: the Hermes stream can occasionally drop. The feed listener auto-reconnects with exponential backoff.
-This repo includes a Docker image build that installs both dependencies and the package at image build time.
-Containers run the bot directly and do **not** `pip install` on startup, so the runtime pip warning spam is removed.
-
-Prereqs:
-- `bootstrap.json` should exist (you can copy from `config.example.json`)
-
-Build and run:
 ```bash
 cp config.example.json bootstrap.json
 docker compose build
 docker compose up -d
 ```
 
-Services:
-- `apb-feed`: `python -m bot.feed_listener --pair ETH/USD --tf-min 15`
-- `apb-cycle`: runs `python -m bot.run_cycle --pair ETH/USD --tf-min 15` every 15 minutes
-- `apb-dashboard`: read-only web dashboard on port `3030` (serves status/timeline from `./data`)
+services:
+- `apb-feed`
+- `apb-cycle`
+- `apb-dashboard` (port `3030`)
 
-Both bot services mount persistent data volume:
-- `apb_data` → `/var/lib/avantis-paper-bot/data`
-- `./config.example.json` → `/var/lib/avantis-paper-bot/bootstrap.json` (read-only)
+notes:
+- hermes stream drops can occur; feed listener auto-reconnects.
+- runtime is designed to avoid pip-install-on-start noise.
 
-Dashboard also reads from the same persistent `apb_data` volume so candles/journal/state survive redeploys.
+---
 
-## GOAT knowledge base (trading doctrine)
-This repo includes optional tooling to index and query the **GOAT Crypto Trading Agent Pack** (reading list + checklists) as a local-first knowledge base.
+## config
 
-Tools live in:
-- `tools/goat_kb/`
+- baseline config file: `config.example.json`
+- runtime config path: `APB_CONFIG=/path/to/config.json`
 
-Quick start:
-```bash
-python3 tools/goat_kb/goat_kb_index.py \
-  --root /home/boilerrat/clawd/knowledge/GOAT_Crypto_Trading_Agent_Pack \
-  --db  /home/boilerrat/clawd/state/goat_kb.db
+risk controls are explicit and should be treated as first-class change surfaces:
+- leverage caps
+- deployed capital caps
+- kill-switch thresholds
+- sizing bounds
 
-python3 tools/goat_kb/goat_kb_query.py --q "PBO" --limit 5
-```
+any change to these should go through reviewed PRs only.
 
-Notes:
-- This is a **keyword (SQLite+FTS5) index**; vector/embeddings can be added later if needed.
-- The pack itself is not committed here by default.
+---
 
-## Disclaimer
-This code is for research/paper simulation. No financial advice.
+## collaboration workflow (required)
+
+for work in `BoilerHAUS/avantis-paper-bot`:
+
+1. open/create issue
+2. create branch on agent fork
+3. open PR to `Main`
+4. human approval required
+5. merge
+6. issue closes (`Closes #...`)
+
+no direct pushes to protected `Main`.
+
+see:
+- `docs/REPO_UPDATE_PROCESS.md`
+- `scripts/apply-branch-protection.sh`
+- `scripts/check-branch-protection.sh`
+
+---
+
+## disclaimer
+
+research + paper simulation only. not financial advice.
