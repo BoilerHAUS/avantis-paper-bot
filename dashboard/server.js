@@ -490,16 +490,32 @@ app.get('/api/report/daily', async (req, res) => {
   const actions = {};
   const desired = {};
   let lastTrade = null;
-  for (const c of cycles) {
+
+  let tradeCount = 0;
+  let winCount = 0;
+  let lossCount = 0;
+  let realizedPnl = 0;
+
+  for (let i = 0; i < cycles.length; i++) {
+    const c = cycles[i];
     const a = c?.plan?.action || 'none';
     actions[a] = (actions[a] || 0) + 1;
     const d = c?.signal?.desired || 'none';
     desired[d] = (desired[d] || 0) + 1;
-  }
-  for (let i = cycles.length - 1; i >= 0; i--) {
-    if ((cycles[i]?.plan?.action || 'hold') !== 'hold') {
-      lastTrade = cycles[i];
-      break;
+
+    if (a !== 'hold') {
+      lastTrade = c;
+    }
+
+    // Treat close/flip as realized events for coarse win-rate tracking.
+    if (a === 'close' || a === 'flip') {
+      tradeCount += 1;
+      const prevEq = Number(cycles[i - 1]?.state?.equity);
+      const currEq = Number(c?.state?.equity);
+      const delta = Number.isFinite(prevEq) && Number.isFinite(currEq) ? currEq - prevEq : 0;
+      realizedPnl += delta;
+      if (delta > 0) winCount += 1;
+      else if (delta < 0) lossCount += 1;
     }
   }
 
@@ -508,6 +524,18 @@ app.get('/api/report/daily', async (req, res) => {
 
   const candlesNeeded = 50;
   const candlesLoaded = Number(cycles[cycles.length - 1]?.candles_loaded ?? 0);
+
+  const latest = cycles[cycles.length - 1] || null;
+  const pos = latest?.state?.position || null;
+  const price = Number(latest?.state?.last_price);
+  const entry = Number(pos?.avg_price ?? pos?.entry_price);
+  const notional = Number(pos?.notional_usd);
+  let unrealizedPnl = 0;
+  if (pos && Number.isFinite(price) && Number.isFinite(entry) && Number.isFinite(notional) && entry > 0) {
+    unrealizedPnl = pos.side === 'short'
+      ? notional * (entry / price - 1.0)
+      : notional * (price / entry - 1.0);
+  }
 
   res.json({
     ok: true,
@@ -520,6 +548,12 @@ app.get('/api/report/daily', async (req, res) => {
       actions,
       desired,
       lastTradeTs: isoOrNull(lastTrade?.ts || lastTrade?.timestamp || null),
+      tradeCount,
+      winCount,
+      lossCount,
+      winRate: tradeCount > 0 ? winCount / tradeCount : null,
+      realizedPnl,
+      unrealizedPnl,
       candlesMinsStale,
       journalMinsStale,
       candlesNeeded,

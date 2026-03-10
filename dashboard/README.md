@@ -4,12 +4,14 @@ VPS dashboard/control plane (v1 mostly read-only) for **Avantis Paper Bot**.
 
 ## What v1 does (real functionality)
 - Reads snapshot + journal (JSON/JSONL) from the VPS.
+- Supports strategy-aware views (`strategy_id`) with side-by-side strategy snapshot cards.
 - Displays:
   - current position (flat/long/short + notional/leverage if present)
   - last cycle timestamp + note
   - last trade time (last cycle where `plan.action != "hold"`) + time since last trade
   - equity + daily_pnl
   - candles_loaded
+  - trade count / win rate / realized vs unrealized pnl (daily report)
 - Health indicators:
   - marks snapshot/journal stale if not updated in >20 minutes
   - shows last mtime + minutes stale
