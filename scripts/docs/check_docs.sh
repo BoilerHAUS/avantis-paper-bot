@@ -44,6 +44,14 @@ if [[ -f "$INDEX" ]]; then
   grep -Fq 'docs/architecture.md' "$INDEX" || fail "$INDEX missing cross-reference: docs/architecture.md"
   grep -Fq 'docs/REPO_UPDATE_PROCESS.md' "$INDEX" || fail "$INDEX missing cross-reference: docs/REPO_UPDATE_PROCESS.md"
   grep -Fq 'dashboard/README.md' "$INDEX" || fail "$INDEX missing cross-reference: dashboard/README.md"
+
+  # When contract docs exist, index must reference them explicitly to prevent drift.
+  for f in "docs/operations/RUNBOOK_PAPER_V1.md" "docs/strategy/STRATEGY_CONTRACT_V1.md" "docs/dashboard/DASHBOARD_CONTRACT_V1.md"; do
+    if [[ -f "$f" ]]; then
+      grep -Fq "$f" "$INDEX" || fail "$INDEX missing cross-reference: $f"
+    fi
+  done
+
   pass "canonical index cross-references ok"
 else
   warn "$INDEX missing; canonical index check skipped"
