@@ -8,6 +8,12 @@
 - [ ] infra/deploy
 - [ ] docs
 
+## Docs impact checklist (required when docs touched)
+- [ ] changed sections summary included
+- [ ] downstream docs touched listed (or `none`)
+- [ ] canonical docs index updated (or reason why not)
+- [ ] ran: `bash ./scripts/docs/check_docs.sh`
+
 ## Risk impact
 - [ ] no trading risk changes
 - [ ] includes trading risk changes (label `risk-change` required)
