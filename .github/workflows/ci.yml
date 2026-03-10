@@ -22,7 +22,7 @@ jobs:
       - name: Install tooling
         run: |
           python -m pip install --upgrade pip
-          pip install ruff
+          pip install -e '.[dev]'
 
       - name: Ruff lint (automation surface)
         run: ruff check scripts
@@ -32,3 +32,6 @@ jobs:
 
       - name: Validate config baseline
         run: python scripts/validate_config.py
+
+      - name: Pytest compatibility checks
+        run: pytest -q

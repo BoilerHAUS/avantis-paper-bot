@@ -15,7 +15,7 @@ This is the standard process for all updates.
 
 1. Open issue (bug/change/risk adjustment)
 2. Create branch from latest `main`
-3. Implement + test
+3. Implement + test (`python -m compileall -q src scripts` and `pytest -q`)
 4. Open PR using template
 5. Required review approval(s)
 6. Squash merge to `main`
