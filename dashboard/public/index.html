@@ -9,6 +9,7 @@
     :root { --pico-font-size: 95%; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+    .gridCompare { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
     @media (max-width: 900px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
     .card { padding: 1rem; border: 1px solid var(--pico-muted-border-color); border-radius: 10px; }
     .pill { display:inline-block; padding:0.2rem 0.55rem; border-radius:999px; font-size:0.85rem; border:1px solid var(--pico-muted-border-color); }
@@ -29,6 +30,22 @@
         <h1>Avantis Paper Bot</h1>
         <p class="muted">V1 dashboard (read-only data + full control layout stubbed)</p>
       </hgroup>
+      <div style="max-width: 320px; margin-bottom: 0.8rem;">
+        <label>Focused strategy view
+          <select id="strategySelect"></select>
+        </label>
+      </div>
+
+      <section class="card" style="margin-bottom:1rem;">
+        <div class="section-title">
+          <h3 style="margin:0">Strategy comparison</h3>
+          <span class="muted">side-by-side snapshot</span>
+        </div>
+        <div class="gridCompare" id="compareGrid">
+          <div class="muted">loading strategy comparison…</div>
+        </div>
+      </section>
+
       <div class="grid2">
         <div class="card">
           <div class="section-title">
@@ -255,7 +272,7 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
     <section class="card" style="margin-top:1rem;">
       <div class="section-title">
         <h3 style="margin:0">Strategy (read-only)</h3>
-        <span class="pill">New</span>
+        <span class="pill" id="strategyFocusTag">New</span>
       </div>
       <p class="muted">Current strategy defaults + latest signal reasoning from the most recent cycle.</p>
       <div class="grid3">
@@ -290,6 +307,11 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
         <div><div class="muted">Feed stale (min)</div><strong id="repFeedStale">—</strong></div>
         <div><div class="muted">Cycle stale (min)</div><strong id="repCycleStale">—</strong></div>
       </div>
+      <div class="grid3" style="margin-top:0.75rem;">
+        <div><div class="muted">Trade count</div><strong id="repTradeCount">—</strong></div>
+        <div><div class="muted">Win rate</div><strong id="repWinRate">—</strong></div>
+        <div><div class="muted">Realized / Unrealized</div><strong id="repPnls">—</strong></div>
+      </div>
     </section>
 
     <footer class="muted" style="margin: 2rem 0 2rem 0;">
@@ -313,6 +335,8 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
   <script>
     const $ = (id) => document.getElementById(id);
 
+    let currentStrategyId = 'conservative';
+    let strategyIds = ['conservative'];
     let candleChart, candleSeries, smaFastSeries, smaSlowSeries, equityChart, equitySeries, pnlChart, pnlSeries;
 
     function initCharts() {
@@ -389,6 +413,14 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
       if (el) el.addEventListener('change', () => tick());
     });
 
+    const strategySelect = $('strategySelect');
+    if (strategySelect) {
+      strategySelect.addEventListener('change', () => {
+        currentStrategyId = strategySelect.value || 'conservative';
+        tick();
+      });
+    }
+
     function fmtMoney(x) {
       if (x === null || x === undefined || x === '') return '—';
       const n = Number(x);
@@ -401,6 +433,13 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
       const n = Number(x);
       if (Number.isNaN(n)) return String(x);
       return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+    }
+
+    function fmtPct(x) {
+      if (x === null || x === undefined || x === '') return '—';
+      const n = Number(x);
+      if (Number.isNaN(n)) return '—';
+      return `${(n * 100).toFixed(1)}%`;
     }
 
     function fmtTs(x) {
@@ -459,15 +498,61 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
       return out;
     }
 
+    function renderCompare(statusRows, reportRows) {
+      const grid = $('compareGrid');
+      const rows = (statusRows || []).map((r) => {
+        const sid = r.strategy_id;
+        return {
+          sid,
+          status: r.status || {},
+          report: reportRows[sid]?.summary || {}
+        };
+      });
+
+      if (!rows.length) {
+        grid.innerHTML = '<div class="muted">No strategy rows available.</div>';
+        return;
+      }
+
+      grid.innerHTML = rows.map((r) => {
+        const pos = r.status?.position?.label || 'flat';
+        return `
+          <article class="card" style="margin:0; padding:0.75rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong>${r.sid}</strong>
+              <span class="pill">${pos}</span>
+            </div>
+            <small class="muted">equity ${fmtMoney(r.status?.equity)} · daily ${fmtMoney(r.status?.daily_pnl)}</small>
+            <div class="muted" style="margin-top:0.35rem;">trades ${r.report.tradeCount ?? 0} · win ${fmtPct(r.report.winRate)} · realized ${fmtMoney(r.report.realizedPnl)} · unrealized ${fmtMoney(r.report.unrealizedPnl)}</div>
+          </article>
+        `;
+      }).join('');
+    }
+
     async function loadAll() {
       const meta = await fetch('/api/meta').then(r => r.json());
       $('paths').textContent = `${meta.snapshotPath} | ${meta.journalDir}`;
       $('utcDate').textContent = utcDate();
 
-      const status = await fetch('/api/status').then(r => r.json());
-      const timeline = await fetch(`/api/timeline?date=${encodeURIComponent(utcDate())}&max=200`).then(r => r.json());
-      const report = await fetch(`/api/report/daily?date=${encodeURIComponent(utcDate())}`).then(r => r.json());
-      const chart = await fetch(`/api/chart?date=${encodeURIComponent(utcDate())}`).then(r => r.json());
+      strategyIds = Array.isArray(meta.strategyIds) && meta.strategyIds.length ? meta.strategyIds : [meta.strategyDefaultId || 'conservative'];
+      if (!strategyIds.includes(currentStrategyId)) currentStrategyId = strategyIds[0];
+      const strategySelect = $('strategySelect');
+      if (strategySelect && !strategySelect.options.length) {
+        strategySelect.innerHTML = strategyIds.map((sid) => `<option value="${sid}">${sid}</option>`).join('');
+      }
+      if (strategySelect) strategySelect.value = currentStrategyId;
+
+      const statusRows = await fetch('/api/statuses').then(r => r.json());
+      const reportRows = {};
+      for (const sid of strategyIds) {
+        reportRows[sid] = await fetch(`/api/report/daily?strategy_id=${encodeURIComponent(sid)}&date=${encodeURIComponent(utcDate())}`).then(r => r.json());
+      }
+      renderCompare(statusRows?.strategies || [], reportRows);
+
+      const status = await fetch(`/api/status?strategy_id=${encodeURIComponent(currentStrategyId)}`).then(r => r.json());
+      const timeline = await fetch(`/api/timeline?strategy_id=${encodeURIComponent(currentStrategyId)}&date=${encodeURIComponent(utcDate())}&max=200`).then(r => r.json());
+      const report = reportRows[currentStrategyId] || await fetch(`/api/report/daily?strategy_id=${encodeURIComponent(currentStrategyId)}&date=${encodeURIComponent(utcDate())}`).then(r => r.json());
+      const chart = await fetch(`/api/chart?strategy_id=${encodeURIComponent(currentStrategyId)}&date=${encodeURIComponent(utcDate())}`).then(r => r.json());
       const strategy = await fetch('/api/strategy').then(r => r.json());
 
       // Health
@@ -572,6 +657,7 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
       // Strategy panel
       const st = strategy?.strategy || {};
       const latest = strategy?.latestSignal || {};
+      $('strategyFocusTag').textContent = `focus: ${currentStrategyId}`;
       $('strFast').textContent = st.trend_fast ?? '—';
       $('strSlow').textContent = st.trend_slow ?? '—';
       $('strMr').textContent = `${st.mr_window ?? '—'} / ${st.mr_entry_z ?? '—'}`;
@@ -589,8 +675,11 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
       $('repLastTrade').textContent = fmtTs(rs.lastTradeTs);
       $('repFeedStale').textContent = (rs.candlesMinsStale ?? '—');
       $('repCycleStale').textContent = (rs.journalMinsStale ?? '—');
+      $('repTradeCount').textContent = (rs.tradeCount ?? '—');
+      $('repWinRate').textContent = fmtPct(rs.winRate);
+      $('repPnls').textContent = `${fmtMoney(rs.realizedPnl)} / ${fmtMoney(rs.unrealizedPnl)}`;
 
-      $('debug').textContent = JSON.stringify({ meta, status, timeline, report, chart, strategy }, null, 2);
+      $('debug').textContent = JSON.stringify({ meta, statusRows, reportRows, status, timeline, report, chart, strategy }, null, 2);
     }
 
     async function tick() {
