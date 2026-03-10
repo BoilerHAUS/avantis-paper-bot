@@ -113,6 +113,10 @@ risk controls are explicit and should be treated as first-class change surfaces:
 - deployed capital caps
 - kill-switch thresholds
 - sizing bounds
+- confidence thresholds (`min_confidence_to_trade`)
+
+strategy behavior can be profile-driven (`strategy.profiles`), so aggressive mode can use
+higher deployment + lower confidence gates while conservative remains unchanged.
 
 any change to these should go through reviewed PRs only.
 

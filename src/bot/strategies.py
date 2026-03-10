@@ -32,6 +32,11 @@ class StrategyConfig:
     min_spread_ratio: float = 0.0015  # |fast-slow|/slow
     min_slope_ratio: float = 0.0008
 
+    # Aggressive-mode knobs
+    tie_break_to_trend: bool = False
+    tie_break_min_confidence: float = 0.0
+    regime_confidence_floor: float = 0.0
+
 
 def trend_signal(closes: list[float], cfg: StrategyConfig) -> Signal:
     f = sma(closes, cfg.trend_fast)
@@ -125,11 +130,19 @@ def choose_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Sig
 
     if long_score > short_score + 0.05:
         conf = min(1.0, long_score / (tw + mw))
+        if regime_on and cfg.regime_confidence_floor > 0:
+            conf = max(conf, cfg.regime_confidence_floor)
         return Signal(desired="long", confidence=conf, strategy="combo", note=f"weighted long ({regime_note})")
 
     if short_score > long_score + 0.05:
         conf = min(1.0, short_score / (tw + mw))
+        if regime_on and cfg.regime_confidence_floor > 0:
+            conf = max(conf, cfg.regime_confidence_floor)
         return Signal(desired="short", confidence=conf, strategy="combo", note=f"weighted short ({regime_note})")
 
     # tie/noisy area
+    if regime_on and cfg.tie_break_to_trend and t.desired in {"long", "short"} and t.confidence >= cfg.tie_break_min_confidence:
+        conf = max(t.confidence, cfg.regime_confidence_floor)
+        return Signal(desired=t.desired, confidence=min(1.0, conf), strategy="combo", note=f"regime tie-break via trend ({regime_note})")
+
     return Signal(desired="flat", confidence=0.4, strategy="combo", note=f"tie/noise ({regime_note})")

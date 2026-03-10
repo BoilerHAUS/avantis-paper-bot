@@ -145,7 +145,7 @@ def plan_from_signal(
     conf = float(getattr(signal, "confidence", 0.0) or 0.0)
 
     def _tiered_max(confidence: float) -> float:
-        if confidence < 0.60:
+        if confidence < cfg.min_confidence_to_trade:
             return 0.0
         if confidence < 0.74:
             return 2.0
@@ -176,7 +176,7 @@ def plan_from_signal(
             stop_loss=None,
             take_profit=None,
             risk_usd=0.0,
-            note=f"skip: conf={conf:.2f} below threshold ({signal.strategy})",
+            note=f"skip: conf={conf:.2f} below threshold={cfg.min_confidence_to_trade:.2f} ({signal.strategy})",
         )
 
     collateral = max(cfg.min_collateral_usd, target_notional / leverage)

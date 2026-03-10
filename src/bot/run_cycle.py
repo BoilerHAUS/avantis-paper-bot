@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,7 +10,7 @@ from .config import DEFAULT_STRATEGY_ID, as_dict, load_config
 from .models import PaperState, Position
 from .paper_engine import execute_paper
 from .risk import compute_risk_budget, plan_from_signal
-from .strategies import choose_signal
+from .strategies import StrategyConfig as SignalStrategyConfig, choose_signal
 from .storage import candles_path, journal_path, snapshot_path, state_path
 from .utils import jsonl_append, read_json, write_json
 
@@ -41,6 +41,40 @@ def _load_recent_candles(path: Path, limit: int = 200) -> list[dict[str, Any]]:
         except Exception:
             continue
     return out
+
+
+def _effective_risk_cfg(cfg, strategy_id: str):
+    p = cfg.strategy.profiles.get(strategy_id)
+    if p is None:
+        return cfg.risk
+
+    return replace(
+        cfg.risk,
+        risk_pct=(cfg.risk.risk_pct if p.risk_pct is None else p.risk_pct),
+        max_deployed_pct=(cfg.risk.max_deployed_pct if p.max_deployed_pct is None else p.max_deployed_pct),
+        max_leverage=(cfg.risk.max_leverage if p.max_leverage is None else p.max_leverage),
+        min_confidence_to_trade=(
+            cfg.risk.min_confidence_to_trade
+            if p.min_confidence_to_trade is None
+            else p.min_confidence_to_trade
+        ),
+    )
+
+
+def _effective_signal_cfg(cfg, strategy_id: str) -> SignalStrategyConfig:
+    p = cfg.strategy.profiles.get(strategy_id)
+    scfg = SignalStrategyConfig()
+    if p is None:
+        return scfg
+
+    if p.trend_weight_in_regime is not None:
+        scfg.trend_weight_in_regime = p.trend_weight_in_regime
+    if p.adx_threshold is not None:
+        scfg.adx_threshold = p.adx_threshold
+    scfg.tie_break_to_trend = p.tie_break_to_trend
+    scfg.tie_break_min_confidence = p.tie_break_min_confidence
+    scfg.regime_confidence_floor = p.regime_confidence_floor
+    return scfg
 
 
 def main() -> None:
@@ -92,17 +126,20 @@ def main() -> None:
 
     now_ts = int(datetime.now().timestamp())
 
-    rb = compute_risk_budget(float(paper.equity), cfg.risk)
+    effective_risk = _effective_risk_cfg(cfg, strategy_id)
+    signal_cfg = _effective_signal_cfg(cfg, strategy_id)
+
+    rb = compute_risk_budget(float(paper.equity), effective_risk)
     closes = [float(c["c"]) for c in candles if "c" in c]
     last_price = closes[-1] if closes else float(paper.last_price or 0.0)
 
-    sig = choose_signal(candles) if closes else None
+    sig = choose_signal(candles, cfg=signal_cfg) if closes else None
 
     if sig is None or last_price <= 0:
         plan = None
         action_note = "no candles yet"
     else:
-        plan = plan_from_signal(signal=sig, candles=candles, last_price=last_price, rb=rb, cfg=cfg.risk)
+        plan = plan_from_signal(signal=sig, candles=candles, last_price=last_price, rb=rb, cfg=effective_risk)
         # If we already have a position, upgrade open->scale/hold/flip/close based on direction.
         if paper.position is None:
             pass
