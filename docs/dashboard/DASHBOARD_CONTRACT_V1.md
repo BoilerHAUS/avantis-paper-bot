@@ -26,10 +26,14 @@ summary fields include:
 - `winRate`
 - `realizedPnl`
 - `unrealizedPnl`
-- `strategy_return`
-- `eth_bh_return`
-- `alpha`
-- `participation_ratio`
+- `benchmark.cycle_count`
+- `benchmark.min_cycle_count_for_confidence`
+- `benchmark.low_sample`
+- `benchmark.sample_note`
+- `benchmark.strategy_return`
+- `benchmark.eth_bh_return`
+- `benchmark.alpha`
+- `benchmark.participation_ratio`
 
 ## metric formulas
 - `winRate = winCount / tradeCount` (null when tradeCount = 0)
@@ -49,6 +53,7 @@ summary fields include:
 - null values display as `—`
 - stale-state indicators must remain visible when source data ages beyond threshold
 - unknown strategy selection falls back to default id
+- if `benchmark.low_sample=true`, UI shows a neutral caution note (not a hard error)
 
 ## compatibility policy
 - additive metrics are allowed if existing fields remain stable

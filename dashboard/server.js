@@ -470,9 +470,17 @@ app.get('/api/chart', async (req, res) => {
   });
 });
 
-function computeBenchmarkFromCycles(cycles) {
+function computeBenchmarkFromCycles(cycles, minCycleCountForConfidence = 24) {
+  const cycleCount = Array.isArray(cycles) ? cycles.length : 0;
   if (!Array.isArray(cycles) || cycles.length < 2) {
+    const lowSample = cycleCount < minCycleCountForConfidence;
     return {
+      cycle_count: cycleCount,
+      min_cycle_count_for_confidence: minCycleCountForConfidence,
+      low_sample: lowSample,
+      sample_note: lowSample
+        ? `Interpret benchmark cautiously: only ${cycleCount} cycles (< ${minCycleCountForConfidence}).`
+        : null,
       strategy_return: null,
       eth_bh_return: null,
       alpha: null,
@@ -512,7 +520,15 @@ function computeBenchmarkFromCycles(cycles) {
       ? strategyReturn / ethBhReturn
       : null;
 
+  const lowSample = cycleCount < minCycleCountForConfidence;
+
   return {
+    cycle_count: cycleCount,
+    min_cycle_count_for_confidence: minCycleCountForConfidence,
+    low_sample: lowSample,
+    sample_note: lowSample
+      ? `Interpret benchmark cautiously: only ${cycleCount} cycles (< ${minCycleCountForConfidence}).`
+      : null,
     strategy_return: strategyReturn,
     eth_bh_return: ethBhReturn,
     alpha,
