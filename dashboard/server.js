@@ -1,6 +1,12 @@
 import express from 'express';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {
+  normalizeStrategyId,
+  parseStrategyIds,
+  strategyJournalDir,
+  strategySnapshotPath,
+} from './strategy.mjs';
 
 const app = express();
 
@@ -15,10 +21,7 @@ const CANDLES_PATH = process.env.CANDLES_PATH ||
   '/etc/dokploy/compose/avantis-paper-bot-nsnxrq/code/data/candles/ETH-USD-15m.jsonl';
 
 const STRATEGY_DEFAULT_ID = process.env.STRATEGY_DEFAULT_ID || 'conservative';
-const STRATEGY_IDS = (process.env.STRATEGY_IDS || STRATEGY_DEFAULT_ID)
-  .split(',')
-  .map((x) => x.trim())
-  .filter(Boolean);
+const STRATEGY_IDS = parseStrategyIds(process.env.STRATEGY_IDS, STRATEGY_DEFAULT_ID);
 
 const STALE_MINUTES = parseInt(process.env.STALE_MINUTES || '20', 10);
 
@@ -35,20 +38,6 @@ const STRATEGY_DEFAULTS = {
   ]
 };
 
-function normalizeStrategyId(raw) {
-  const v = String(raw || STRATEGY_DEFAULT_ID).trim();
-  return STRATEGY_IDS.includes(v) ? v : STRATEGY_DEFAULT_ID;
-}
-
-function strategySnapshotPath(strategyId) {
-  if (strategyId === STRATEGY_DEFAULT_ID) return SNAPSHOT_PATH;
-  return SNAPSHOT_PATH.replace(/\/state\/snapshot\.json$/, `/strategies/${strategyId}/state/snapshot.json`);
-}
-
-function strategyJournalDir(strategyId) {
-  if (strategyId === STRATEGY_DEFAULT_ID) return JOURNAL_DIR;
-  return JOURNAL_DIR.replace(/\/journal$/, `/strategies/${strategyId}/journal`);
-}
 
 app.use(express.static(path.join(process.cwd(), 'public')));
 
@@ -78,7 +67,7 @@ async function readJsonSafe(p) {
 }
 
 async function listJournalFile(dateStr, strategyId = STRATEGY_DEFAULT_ID) {
-  const p = path.join(strategyJournalDir(strategyId), `${dateStr}.jsonl`);
+  const p = path.join(strategyJournalDir(JOURNAL_DIR, strategyId, STRATEGY_DEFAULT_ID), `${dateStr}.jsonl`);
   return p;
 }
 
@@ -258,8 +247,8 @@ app.get('/api/meta', async (_req, res) => {
 });
 
 app.get('/api/status', async (req, res) => {
-  const strategyId = normalizeStrategyId(req.query.strategy_id);
-  const strategySnapshot = strategySnapshotPath(strategyId);
+  const strategyId = normalizeStrategyId(req.query.strategy_id, STRATEGY_IDS, STRATEGY_DEFAULT_ID);
+  const strategySnapshot = strategySnapshotPath(SNAPSHOT_PATH, strategyId, STRATEGY_DEFAULT_ID);
   const snapshotStat = await statSafe(strategySnapshot);
 
   let snapshot = null;
@@ -294,7 +283,7 @@ app.get('/api/status', async (req, res) => {
 app.get('/api/statuses', async (_req, res) => {
   const rows = [];
   for (const strategyId of STRATEGY_IDS) {
-    const strategySnapshot = strategySnapshotPath(strategyId);
+    const strategySnapshot = strategySnapshotPath(SNAPSHOT_PATH, strategyId, STRATEGY_DEFAULT_ID);
     const snapshotStat = await statSafe(strategySnapshot);
 
     let snapshot = null;
@@ -325,7 +314,7 @@ app.get('/api/statuses', async (_req, res) => {
 });
 
 app.get('/api/timeline', async (req, res) => {
-  const strategyId = normalizeStrategyId(req.query.strategy_id);
+  const strategyId = normalizeStrategyId(req.query.strategy_id, STRATEGY_IDS, STRATEGY_DEFAULT_ID);
   const date = (req.query.date && String(req.query.date)) || utcDateString();
   const max = Math.min(500, Math.max(1, parseInt(req.query.max || '200', 10)));
 
@@ -375,7 +364,7 @@ app.get('/api/timeline', async (req, res) => {
 const WATCHDOG_LOG_PATH = process.env.WATCHDOG_LOG_PATH || '/tmp/apb_feed_watchdog.log';
 
 app.get('/api/chart', async (req, res) => {
-  const strategyId = normalizeStrategyId(req.query.strategy_id);
+  const strategyId = normalizeStrategyId(req.query.strategy_id, STRATEGY_IDS, STRATEGY_DEFAULT_ID);
   const date = (req.query.date && String(req.query.date)) || utcDateString();
   const journalPath = await listJournalFile(date, strategyId);
 
@@ -482,7 +471,7 @@ app.get('/api/chart', async (req, res) => {
 });
 
 app.get('/api/report/daily', async (req, res) => {
-  const strategyId = normalizeStrategyId(req.query.strategy_id);
+  const strategyId = normalizeStrategyId(req.query.strategy_id, STRATEGY_IDS, STRATEGY_DEFAULT_ID);
   const date = (req.query.date && String(req.query.date)) || utcDateString();
   const journalPath = await listJournalFile(date, strategyId);
   const journalStat = await statSafe(journalPath);

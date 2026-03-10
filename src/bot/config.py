@@ -34,11 +34,29 @@ class RiskConfig:
     daily_kill_switch_pct: float = -0.10
     min_collateral_usd: float = 20.0
 
+    # Confidence gate for opening/scaling positions.
+    min_confidence_to_trade: float = 0.60
+
+
+@dataclass
+class StrategyProfileConfig:
+    risk_pct: float | None = None
+    max_deployed_pct: float | None = None
+    max_leverage: float | None = None
+    min_confidence_to_trade: float | None = None
+
+    trend_weight_in_regime: float | None = None
+    adx_threshold: float | None = None
+    tie_break_to_trend: bool = False
+    tie_break_min_confidence: float = 0.0
+    regime_confidence_floor: float = 0.0
+
 
 @dataclass
 class StrategyConfig:
     default_id: str = DEFAULT_STRATEGY_ID
     allowed_ids: list[str] = field(default_factory=lambda: [DEFAULT_STRATEGY_ID])
+    profiles: dict[str, StrategyProfileConfig] = field(default_factory=dict)
 
 
 @dataclass
@@ -78,6 +96,7 @@ def load_config() -> BotConfig:
         max_deployed_pct=float(r.get("max_deployed_pct", cfg.risk.max_deployed_pct)),
         daily_kill_switch_pct=float(r.get("daily_kill_switch_pct", cfg.risk.daily_kill_switch_pct)),
         min_collateral_usd=float(r.get("min_collateral_usd", cfg.risk.min_collateral_usd)),
+        min_confidence_to_trade=float(r.get("min_confidence_to_trade", cfg.risk.min_confidence_to_trade)),
     )
 
     s = data.get("strategy", {}) or {}
@@ -92,7 +111,23 @@ def load_config() -> BotConfig:
     if default_id not in allowed_ids:
         allowed_ids.insert(0, default_id)
 
-    cfg.strategy = StrategyConfig(default_id=default_id, allowed_ids=allowed_ids)
+    profiles_raw = s.get("profiles", {}) or {}
+    profiles: dict[str, StrategyProfileConfig] = {}
+    for sid in allowed_ids:
+        raw = profiles_raw.get(sid, {}) or {}
+        profiles[sid] = StrategyProfileConfig(
+            risk_pct=(None if raw.get("risk_pct") is None else float(raw.get("risk_pct"))),
+            max_deployed_pct=(None if raw.get("max_deployed_pct") is None else float(raw.get("max_deployed_pct"))),
+            max_leverage=(None if raw.get("max_leverage") is None else float(raw.get("max_leverage"))),
+            min_confidence_to_trade=(None if raw.get("min_confidence_to_trade") is None else float(raw.get("min_confidence_to_trade"))),
+            trend_weight_in_regime=(None if raw.get("trend_weight_in_regime") is None else float(raw.get("trend_weight_in_regime"))),
+            adx_threshold=(None if raw.get("adx_threshold") is None else float(raw.get("adx_threshold"))),
+            tie_break_to_trend=bool(raw.get("tie_break_to_trend", False)),
+            tie_break_min_confidence=float(raw.get("tie_break_min_confidence", 0.0)),
+            regime_confidence_floor=float(raw.get("regime_confidence_floor", 0.0)),
+        )
+
+    cfg.strategy = StrategyConfig(default_id=default_id, allowed_ids=allowed_ids, profiles=profiles)
 
     return cfg
 
