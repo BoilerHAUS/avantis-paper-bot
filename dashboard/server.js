@@ -14,6 +14,12 @@ const JOURNAL_DIR = process.env.JOURNAL_DIR ||
 const CANDLES_PATH = process.env.CANDLES_PATH ||
   '/etc/dokploy/compose/avantis-paper-bot-nsnxrq/code/data/candles/ETH-USD-15m.jsonl';
 
+const STRATEGY_DEFAULT_ID = process.env.STRATEGY_DEFAULT_ID || 'conservative';
+const STRATEGY_IDS = (process.env.STRATEGY_IDS || STRATEGY_DEFAULT_ID)
+  .split(',')
+  .map((x) => x.trim())
+  .filter(Boolean);
+
 const STALE_MINUTES = parseInt(process.env.STALE_MINUTES || '20', 10);
 
 const STRATEGY_DEFAULTS = {
@@ -28,6 +34,21 @@ const STRATEGY_DEFAULTS = {
     'If insufficient candles, signal stays flat'
   ]
 };
+
+function normalizeStrategyId(raw) {
+  const v = String(raw || STRATEGY_DEFAULT_ID).trim();
+  return STRATEGY_IDS.includes(v) ? v : STRATEGY_DEFAULT_ID;
+}
+
+function strategySnapshotPath(strategyId) {
+  if (strategyId === STRATEGY_DEFAULT_ID) return SNAPSHOT_PATH;
+  return SNAPSHOT_PATH.replace(/\/state\/snapshot\.json$/, `/strategies/${strategyId}/state/snapshot.json`);
+}
+
+function strategyJournalDir(strategyId) {
+  if (strategyId === STRATEGY_DEFAULT_ID) return JOURNAL_DIR;
+  return JOURNAL_DIR.replace(/\/journal$/, `/strategies/${strategyId}/journal`);
+}
 
 app.use(express.static(path.join(process.cwd(), 'public')));
 
@@ -56,8 +77,8 @@ async function readJsonSafe(p) {
   return JSON.parse(raw);
 }
 
-async function listJournalFile(dateStr) {
-  const p = path.join(JOURNAL_DIR, `${dateStr}.jsonl`);
+async function listJournalFile(dateStr, strategyId = STRATEGY_DEFAULT_ID) {
+  const p = path.join(strategyJournalDir(strategyId), `${dateStr}.jsonl`);
   return p;
 }
 
@@ -230,18 +251,22 @@ app.get('/api/meta', async (_req, res) => {
     port: PORT,
     snapshotPath: SNAPSHOT_PATH,
     journalDir: JOURNAL_DIR,
+    strategyDefaultId: STRATEGY_DEFAULT_ID,
+    strategyIds: STRATEGY_IDS,
     staleMinutes: STALE_MINUTES
   });
 });
 
-app.get('/api/status', async (_req, res) => {
-  const snapshotStat = await statSafe(SNAPSHOT_PATH);
+app.get('/api/status', async (req, res) => {
+  const strategyId = normalizeStrategyId(req.query.strategy_id);
+  const strategySnapshot = strategySnapshotPath(strategyId);
+  const snapshotStat = await statSafe(strategySnapshot);
 
   let snapshot = null;
   let snapshotError = null;
   if (snapshotStat.ok) {
     try {
-      snapshot = await readJsonSafe(SNAPSHOT_PATH);
+      snapshot = await readJsonSafe(strategySnapshot);
     } catch (e) {
       snapshotError = e?.message || String(e);
     }
@@ -254,8 +279,9 @@ app.get('/api/status', async (_req, res) => {
 
   res.json({
     ok: true,
+    strategy_id: strategyId,
     snapshot: {
-      path: SNAPSHOT_PATH,
+      path: strategySnapshot,
       stat: snapshotStat,
       minsStale: snapshotMinsStale,
       isStale: snapshotIsStale,
@@ -265,11 +291,45 @@ app.get('/api/status', async (_req, res) => {
   });
 });
 
+app.get('/api/statuses', async (_req, res) => {
+  const rows = [];
+  for (const strategyId of STRATEGY_IDS) {
+    const strategySnapshot = strategySnapshotPath(strategyId);
+    const snapshotStat = await statSafe(strategySnapshot);
+
+    let snapshot = null;
+    let snapshotError = null;
+    if (snapshotStat.ok) {
+      try {
+        snapshot = await readJsonSafe(strategySnapshot);
+      } catch (e) {
+        snapshotError = e?.message || String(e);
+      }
+    }
+
+    const snapshotMinsStale = snapshotStat.ok ? minutesSince(snapshotStat.mtimeMs) : null;
+    rows.push({
+      strategy_id: strategyId,
+      snapshot: {
+        path: strategySnapshot,
+        stat: snapshotStat,
+        minsStale: snapshotMinsStale,
+        isStale: snapshotStat.ok ? snapshotMinsStale > STALE_MINUTES : true,
+        parseError: snapshotError
+      },
+      status: snapshot ? extractStatus(snapshot) : null
+    });
+  }
+
+  res.json({ ok: true, strategies: rows });
+});
+
 app.get('/api/timeline', async (req, res) => {
+  const strategyId = normalizeStrategyId(req.query.strategy_id);
   const date = (req.query.date && String(req.query.date)) || utcDateString();
   const max = Math.min(500, Math.max(1, parseInt(req.query.max || '200', 10)));
 
-  const journalPath = await listJournalFile(date);
+  const journalPath = await listJournalFile(date, strategyId);
   const journalStat = await statSafe(journalPath);
 
   let events = [];
@@ -298,6 +358,7 @@ app.get('/api/timeline', async (req, res) => {
 
   res.json({
     ok: true,
+    strategy_id: strategyId,
     date,
     journal: {
       path: journalPath,
@@ -314,8 +375,9 @@ app.get('/api/timeline', async (req, res) => {
 const WATCHDOG_LOG_PATH = process.env.WATCHDOG_LOG_PATH || '/tmp/apb_feed_watchdog.log';
 
 app.get('/api/chart', async (req, res) => {
+  const strategyId = normalizeStrategyId(req.query.strategy_id);
   const date = (req.query.date && String(req.query.date)) || utcDateString();
-  const journalPath = await listJournalFile(date);
+  const journalPath = await listJournalFile(date, strategyId);
 
   let candles = [];
   try {
@@ -409,6 +471,7 @@ app.get('/api/chart', async (req, res) => {
 
   res.json({
     ok: true,
+    strategy_id: strategyId,
     date,
     candles,
     markers,
@@ -419,8 +482,9 @@ app.get('/api/chart', async (req, res) => {
 });
 
 app.get('/api/report/daily', async (req, res) => {
+  const strategyId = normalizeStrategyId(req.query.strategy_id);
   const date = (req.query.date && String(req.query.date)) || utcDateString();
-  const journalPath = await listJournalFile(date);
+  const journalPath = await listJournalFile(date, strategyId);
   const journalStat = await statSafe(journalPath);
   const candlesStat = await statSafe(CANDLES_PATH);
 
@@ -458,6 +522,7 @@ app.get('/api/report/daily', async (req, res) => {
 
   res.json({
     ok: true,
+    strategy_id: strategyId,
     date,
     summary: {
       cycleCount: cycles.length,

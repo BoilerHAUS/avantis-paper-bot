@@ -2,6 +2,11 @@
   "pair": "ETH/USD",
   "tf_min": 15,
 
+  "strategy": {
+    "default_id": "conservative",
+    "allowed_ids": ["conservative", "aggressive"]
+  },
+
   "risk": {
     "risk_pct": 0.03,
     "min_risk_usd": 10.0,
