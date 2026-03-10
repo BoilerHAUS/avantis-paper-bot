@@ -317,6 +317,7 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
         <div><div class="muted">ETH buy-hold return</div><strong id="repEthRet">—</strong></div>
         <div><div class="muted">Alpha / participation</div><strong id="repAlphaPart">—</strong></div>
       </div>
+      <div class="muted" id="repSampleNote" style="margin-top:0.55rem;">—</div>
     </section>
 
     <footer class="muted" style="margin: 2rem 0 2rem 0;">
@@ -531,6 +532,7 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
             <small class="muted">equity ${fmtMoney(r.status?.equity)} · daily ${fmtMoney(r.status?.daily_pnl)}</small>
             <div class="muted" style="margin-top:0.35rem;">trades ${r.report.tradeCount ?? 0} · win ${fmtPct(r.report.winRate)} · realized ${fmtMoney(r.report.realizedPnl)} · unrealized ${fmtMoney(r.report.unrealizedPnl)}</div>
             <div class="muted" style="margin-top:0.35rem;">strat ${fmtPct(b.strategy_return)} · eth bh ${fmtPct(b.eth_bh_return)} · alpha ${fmtPct(b.alpha)}</div>
+            ${b.low_sample ? `<div class="muted" style="margin-top:0.35rem;"><span class="pill">low sample</span> ${b.sample_note || ''}</div>` : ''}
           </article>
         `;
       }).join('');
@@ -689,6 +691,7 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
       $('repStratRet').textContent = fmtPct(b.strategy_return);
       $('repEthRet').textContent = fmtPct(b.eth_bh_return);
       $('repAlphaPart').textContent = `${fmtPct(b.alpha)} / ${fmtNum(b.participation_ratio)}`;
+      $('repSampleNote').textContent = b.low_sample ? `⚠️ ${b.sample_note || 'Interpret alpha cautiously; sample size is low.'}` : 'sample confidence looks sufficient.';
 
       $('debug').textContent = JSON.stringify({ meta, statusRows, reportRows, status, timeline, report, chart, strategy }, null, 2);
     }

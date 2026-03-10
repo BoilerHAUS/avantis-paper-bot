@@ -25,6 +25,7 @@ VPS dashboard/control plane (v1 mostly read-only) for **Avantis Paper Bot**.
 - ETH buy-and-hold return: `(latest_price / first_cycle_price) - 1`
 - alpha: `strategy_return - eth_bh_return`
 - participation ratio: `strategy_return / eth_bh_return` (null when denominator is ~0)
+- low-sample confidence flag: `low_sample=true` when `cycle_count < min_cycle_count_for_confidence` (default: 24 cycles)
 
 ## What v1 does NOT do
 - No live trading.
