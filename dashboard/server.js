@@ -470,6 +470,60 @@ app.get('/api/chart', async (req, res) => {
   });
 });
 
+function computeBenchmarkFromCycles(cycles) {
+  if (!Array.isArray(cycles) || cycles.length < 2) {
+    return {
+      strategy_return: null,
+      eth_bh_return: null,
+      alpha: null,
+      participation_ratio: null,
+      start_equity: null,
+      end_equity: null,
+      start_price: null,
+      end_price: null,
+    };
+  }
+
+  const first = cycles[0];
+  const last = cycles[cycles.length - 1];
+
+  const startEquity = Number(first?.state?.equity);
+  const endEquity = Number(last?.state?.equity);
+  const startPrice = Number(first?.state?.last_price);
+  const endPrice = Number(last?.state?.last_price);
+
+  const strategyReturn =
+    Number.isFinite(startEquity) && Number.isFinite(endEquity) && startEquity > 0
+      ? endEquity / startEquity - 1.0
+      : null;
+
+  const ethBhReturn =
+    Number.isFinite(startPrice) && Number.isFinite(endPrice) && startPrice > 0
+      ? endPrice / startPrice - 1.0
+      : null;
+
+  const alpha =
+    strategyReturn !== null && ethBhReturn !== null
+      ? strategyReturn - ethBhReturn
+      : null;
+
+  const participationRatio =
+    strategyReturn !== null && ethBhReturn !== null && Math.abs(ethBhReturn) > 1e-9
+      ? strategyReturn / ethBhReturn
+      : null;
+
+  return {
+    strategy_return: strategyReturn,
+    eth_bh_return: ethBhReturn,
+    alpha,
+    participation_ratio: participationRatio,
+    start_equity: Number.isFinite(startEquity) ? startEquity : null,
+    end_equity: Number.isFinite(endEquity) ? endEquity : null,
+    start_price: Number.isFinite(startPrice) ? startPrice : null,
+    end_price: Number.isFinite(endPrice) ? endPrice : null,
+  };
+}
+
 app.get('/api/report/daily', async (req, res) => {
   const strategyId = normalizeStrategyId(req.query.strategy_id, STRATEGY_IDS, STRATEGY_DEFAULT_ID);
   const date = (req.query.date && String(req.query.date)) || utcDateString();
@@ -537,6 +591,8 @@ app.get('/api/report/daily', async (req, res) => {
       : notional * (price / entry - 1.0);
   }
 
+  const benchmark = computeBenchmarkFromCycles(cycles);
+
   res.json({
     ok: true,
     strategy_id: strategyId,
@@ -554,6 +610,7 @@ app.get('/api/report/daily', async (req, res) => {
       winRate: tradeCount > 0 ? winCount / tradeCount : null,
       realizedPnl,
       unrealizedPnl,
+      benchmark,
       candlesMinsStale,
       journalMinsStale,
       candlesNeeded,
@@ -562,6 +619,30 @@ app.get('/api/report/daily', async (req, res) => {
       feedStale: candlesMinsStale === null ? true : candlesMinsStale > STALE_MINUTES,
       cycleStale: journalMinsStale === null ? true : journalMinsStale > STALE_MINUTES
     }
+  });
+});
+
+app.get('/api/benchmark/daily', async (req, res) => {
+  const strategyId = normalizeStrategyId(req.query.strategy_id, STRATEGY_IDS, STRATEGY_DEFAULT_ID);
+  const date = (req.query.date && String(req.query.date)) || utcDateString();
+  const journalPath = await listJournalFile(date, strategyId);
+
+  let events = [];
+  try {
+    events = await tailJsonl(journalPath, 5000);
+  } catch {
+    events = [];
+  }
+
+  const cycles = events.filter((e) => e?.type === 'cycle');
+  const benchmark = computeBenchmarkFromCycles(cycles);
+
+  res.json({
+    ok: true,
+    strategy_id: strategyId,
+    date,
+    methodology: 'Uses same day window and start references as strategy state: first cycle equity/price vs latest cycle equity/price.',
+    benchmark,
   });
 });
 
