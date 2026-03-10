@@ -33,5 +33,8 @@ jobs:
       - name: Validate config baseline
         run: python scripts/validate_config.py
 
+      - name: Docs quality gate
+        run: bash ./scripts/docs/check_docs.sh
+
       - name: Pytest compatibility checks
         run: pytest -q
