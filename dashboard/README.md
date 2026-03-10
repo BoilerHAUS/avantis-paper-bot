@@ -5,6 +5,7 @@ VPS dashboard/control plane (v1 mostly read-only) for **Avantis Paper Bot**.
 ## What v1 does (real functionality)
 - Reads snapshot + journal (JSON/JSONL) from the VPS.
 - Supports strategy-aware views (`strategy_id`) with side-by-side strategy snapshot cards.
+- Exposes benchmark metrics (`strategy_return`, `eth_bh_return`, `alpha`, `participation_ratio`) via API and UI.
 - Displays:
   - current position (flat/long/short + notional/leverage if present)
   - last cycle timestamp + note
@@ -17,6 +18,13 @@ VPS dashboard/control plane (v1 mostly read-only) for **Avantis Paper Bot**.
   - shows last mtime + minutes stale
 - Timeline:
   - last ~20 cycle events (from journal)
+
+## benchmark methodology (v1)
+- window: same UTC day + strategy lane
+- strategy return: `(latest_equity / first_cycle_equity) - 1`
+- ETH buy-and-hold return: `(latest_price / first_cycle_price) - 1`
+- alpha: `strategy_return - eth_bh_return`
+- participation ratio: `strategy_return / eth_bh_return` (null when denominator is ~0)
 
 ## What v1 does NOT do
 - No live trading.
