@@ -46,9 +46,14 @@ market stream
 
 key persisted outputs:
 - `data/candles/ETH-USD-15m.jsonl`
-- `data/journal/YYYY-MM-DD.jsonl`
-- `data/state/current.json`
-- `data/state/snapshot.json`
+- conservative lane (default/backward-compatible):
+  - `data/journal/YYYY-MM-DD.jsonl`
+  - `data/state/current.json`
+  - `data/state/snapshot.json`
+- non-default strategy lanes:
+  - `data/strategies/<strategy_id>/journal/YYYY-MM-DD.jsonl`
+  - `data/strategies/<strategy_id>/state/current.json`
+  - `data/strategies/<strategy_id>/state/snapshot.json`
 
 ---
 
@@ -73,7 +78,8 @@ python -m bot.feed_listener --pair "ETH/USD" --tf-min 15
 ### 3) run one cycle manually
 
 ```bash
-python -m bot.run_cycle --pair "ETH/USD" --tf-min 15
+python -m bot.run_cycle --pair "ETH/USD" --tf-min 15 --strategy-id conservative
+python -m bot.run_cycle --pair "ETH/USD" --tf-min 15 --strategy-id aggressive
 ```
 
 ---

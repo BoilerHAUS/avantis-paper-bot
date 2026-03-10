@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any
 
 
+DEFAULT_STRATEGY_ID = "conservative"
+
+
 @dataclass
 class RiskConfig:
     # Baseline risk target (still clamped by min/max below)
@@ -33,10 +36,17 @@ class RiskConfig:
 
 
 @dataclass
+class StrategyConfig:
+    default_id: str = DEFAULT_STRATEGY_ID
+    allowed_ids: list[str] = field(default_factory=lambda: [DEFAULT_STRATEGY_ID])
+
+
+@dataclass
 class BotConfig:
     pair: str = "ETH/USD"
     tf_min: int = 15
     risk: RiskConfig = field(default_factory=RiskConfig)
+    strategy: StrategyConfig = field(default_factory=StrategyConfig)
 
 
 def load_config() -> BotConfig:
@@ -69,6 +79,20 @@ def load_config() -> BotConfig:
         daily_kill_switch_pct=float(r.get("daily_kill_switch_pct", cfg.risk.daily_kill_switch_pct)),
         min_collateral_usd=float(r.get("min_collateral_usd", cfg.risk.min_collateral_usd)),
     )
+
+    s = data.get("strategy", {}) or {}
+    allowed = s.get("allowed_ids", [cfg.strategy.default_id])
+    if not isinstance(allowed, list) or not allowed:
+        allowed = [cfg.strategy.default_id]
+    allowed_ids = [str(x).strip() for x in allowed if str(x).strip()]
+    if DEFAULT_STRATEGY_ID not in allowed_ids:
+        allowed_ids.insert(0, DEFAULT_STRATEGY_ID)
+
+    default_id = str(s.get("default_id", cfg.strategy.default_id)).strip() or DEFAULT_STRATEGY_ID
+    if default_id not in allowed_ids:
+        allowed_ids.insert(0, default_id)
+
+    cfg.strategy = StrategyConfig(default_id=default_id, allowed_ids=allowed_ids)
 
     return cfg
 

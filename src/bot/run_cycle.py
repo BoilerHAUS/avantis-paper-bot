@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .config import as_dict, load_config
+from .config import DEFAULT_STRATEGY_ID, as_dict, load_config
 from .models import PaperState, Position
 from .paper_engine import execute_paper
 from .risk import compute_risk_budget, plan_from_signal
@@ -50,12 +50,19 @@ def main() -> None:
     ap.add_argument("--pair", default=cfg.pair)
     ap.add_argument("--tf-min", type=int, default=cfg.tf_min)
     ap.add_argument("--candle-limit", type=int, default=200)
+    ap.add_argument("--strategy-id", default=cfg.strategy.default_id)
     args = ap.parse_args()
+
+    strategy_id = (args.strategy_id or DEFAULT_STRATEGY_ID).strip()
+    if strategy_id not in cfg.strategy.allowed_ids:
+        raise SystemExit(
+            f"strategy_id '{strategy_id}' not allowed; allowed_ids={cfg.strategy.allowed_ids}"
+        )
 
     cpath = candles_path(args.pair, args.tf_min)
     candles = _load_recent_candles(cpath, limit=args.candle_limit)
 
-    raw_state = read_json(state_path(), default={"equity": 100.0, "position": None, "daily_pnl": 0.0})
+    raw_state = read_json(state_path(strategy_id), default={"equity": 100.0, "position": None, "daily_pnl": 0.0})
 
     # normalize to PaperState
     pos_raw = raw_state.get("position")
@@ -127,11 +134,12 @@ def main() -> None:
         note=f"cycle: candles={len(candles)} last_price={last_price:.2f} action={action_note}",
     )
 
-    jpath = journal_path(_today())
+    jpath = journal_path(_today(), strategy_id=strategy_id)
     jsonl_append(
         jpath,
         {
             "type": "cycle",
+            "strategy_id": strategy_id,
             "ts": res.ts,
             "pair": res.pair,
             "tf_min": res.tf_min,
@@ -154,6 +162,7 @@ def main() -> None:
     # Snapshot for dashboard
     snapshot = {
         "ts": now_ts,
+        "strategy_id": strategy_id,
         "pair": args.pair,
         "tf_min": args.tf_min,
         "equity": paper.equity,
@@ -168,17 +177,18 @@ def main() -> None:
     }
 
     write_json(
-        state_path(),
+        state_path(strategy_id),
         {
+            "strategy_id": strategy_id,
             "equity": paper.equity,
             "daily_pnl": paper.daily_pnl,
             "position": paper.position.__dict__ if paper.position else None,
             "last_price": paper.last_price,
         },
     )
-    write_json(snapshot_path(), snapshot)
+    write_json(snapshot_path(strategy_id), snapshot)
 
-    print(f"[cycle] wrote journal={jpath} snapshot={snapshot_path()}")
+    print(f"[cycle] strategy={strategy_id} wrote journal={jpath} snapshot={snapshot_path(strategy_id)}")
 
 
 if __name__ == "__main__":
