@@ -562,7 +562,7 @@ Defaults (seed): 1% equity risk, clamp $10-$50, max lev 2x, max deployed 75%, da
       const timeline = await fetch(`/api/timeline?strategy_id=${encodeURIComponent(currentStrategyId)}&date=${encodeURIComponent(utcDate())}&max=200`).then(r => r.json());
       const report = reportRows[currentStrategyId] || await fetch(`/api/report/daily?strategy_id=${encodeURIComponent(currentStrategyId)}&date=${encodeURIComponent(utcDate())}`).then(r => r.json());
       const chart = await fetch(`/api/chart?strategy_id=${encodeURIComponent(currentStrategyId)}&date=${encodeURIComponent(utcDate())}`).then(r => r.json());
-      const strategy = await fetch('/api/strategy').then(r => r.json());
+      const strategy = await fetch(`/api/strategy?strategy_id=${encodeURIComponent(currentStrategyId)}`).then(r => r.json());
 
       // Health
       const snapOk = status.snapshot && !status.snapshot.isStale && status.snapshot.stat && status.snapshot.stat.ok && !status.snapshot.parseError;
