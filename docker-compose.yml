@@ -8,7 +8,7 @@ services:
       JOURNAL_DIR: /var/lib/avantis-paper-bot/data/journal
       CANDLES_PATH: /var/lib/avantis-paper-bot/data/candles/ETH-USD-15m.jsonl
       STRATEGY_DEFAULT_ID: conservative
-      STRATEGY_IDS: conservative,aggressive
+      STRATEGY_IDS: conservative,aggressive,super_aggressive
     volumes:
       - apb_data:/var/lib/avantis-paper-bot/data:ro
     restart: unless-stopped
@@ -36,6 +36,40 @@ services:
         "sh",
         "-lc",
         "while true; do python -m bot.run_cycle --pair 'ETH/USD' --tf-min 15; sleep 900; done",
+      ]
+    environment:
+      APB_DATA_DIR: /var/lib/avantis-paper-bot/data
+      APB_CONFIG: /var/lib/avantis-paper-bot/bootstrap.json
+    volumes:
+      - apb_data:/var/lib/avantis-paper-bot/data
+      - ./config.example.json:/var/lib/avantis-paper-bot/bootstrap.json:ro
+    restart: unless-stopped
+
+  apb-cycle-aggressive:
+    build: .
+    image: avantis-paper-bot:latest
+    command:
+      [
+        "sh",
+        "-lc",
+        "while true; do python -m bot.run_cycle --pair 'ETH/USD' --tf-min 15 --strategy-id aggressive; sleep 900; done",
+      ]
+    environment:
+      APB_DATA_DIR: /var/lib/avantis-paper-bot/data
+      APB_CONFIG: /var/lib/avantis-paper-bot/bootstrap.json
+    volumes:
+      - apb_data:/var/lib/avantis-paper-bot/data
+      - ./config.example.json:/var/lib/avantis-paper-bot/bootstrap.json:ro
+    restart: unless-stopped
+
+  apb-cycle-super-aggressive:
+    build: .
+    image: avantis-paper-bot:latest
+    command:
+      [
+        "sh",
+        "-lc",
+        "while true; do python -m bot.run_cycle --pair 'ETH/USD' --tf-min 15 --strategy-id super_aggressive; sleep 900; done",
       ]
     environment:
       APB_DATA_DIR: /var/lib/avantis-paper-bot/data
