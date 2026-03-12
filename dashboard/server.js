@@ -208,9 +208,10 @@ function startDataMountSelfHeal() {
   }, intervalMs);
 }
 
-app.get('/api/strategy', async (_req, res) => {
+app.get('/api/strategy', async (req, res) => {
+  const strategyId = normalizeStrategyId(req.query.strategy_id, STRATEGY_IDS, STRATEGY_DEFAULT_ID);
   const date = utcDateString();
-  const journalPath = await listJournalFile(date);
+  const journalPath = await listJournalFile(date, strategyId);
 
   let latestCycle = null;
   try {
@@ -223,6 +224,7 @@ app.get('/api/strategy', async (_req, res) => {
 
   res.json({
     ok: true,
+    strategy_id: strategyId,
     strategy: STRATEGY_DEFAULTS,
     latestSignal: latestCycle ? {
       desired: latestCycle?.signal?.desired ?? null,

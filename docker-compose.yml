@@ -7,6 +7,8 @@ services:
       SNAPSHOT_PATH: /var/lib/avantis-paper-bot/data/state/snapshot.json
       JOURNAL_DIR: /var/lib/avantis-paper-bot/data/journal
       CANDLES_PATH: /var/lib/avantis-paper-bot/data/candles/ETH-USD-15m.jsonl
+      STRATEGY_DEFAULT_ID: conservative
+      STRATEGY_IDS: conservative,aggressive
     volumes:
       - apb_data:/var/lib/avantis-paper-bot/data:ro
     restart: unless-stopped
