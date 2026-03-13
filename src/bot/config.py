@@ -133,6 +133,10 @@ def load_config() -> BotConfig:
 
 
 def as_dict(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {k: as_dict(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [as_dict(v) for v in obj]
     if hasattr(obj, "__dict__"):
         return {k: as_dict(v) for k, v in obj.__dict__.items()}
     return obj
