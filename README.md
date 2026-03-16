@@ -81,6 +81,8 @@ python -m bot.feed_listener --pair "ETH/USD" --tf-min 15
 ```bash
 python -m bot.run_cycle --pair "ETH/USD" --tf-min 15 --strategy-id conservative
 python -m bot.run_cycle --pair "ETH/USD" --tf-min 15 --strategy-id aggressive
+python -m bot.run_cycle --pair "ETH/USD" --tf-min 15 --strategy-id super_aggressive
+python -m bot.run_cycle --pair "ETH/USD" --tf-min 15 --strategy-id edge_filtered
 ```
 
 ---
@@ -118,6 +120,9 @@ risk controls are explicit and should be treated as first-class change surfaces:
 
 strategy behavior can be profile-driven (`strategy.profiles`), so aggressive mode can use
 higher deployment + lower confidence gates while conservative remains unchanged.
+
+`edge_filtered` is an additive paper experiment lane using a stricter confidence gate
+(`min_confidence_to_trade: 0.60`) to skip lower-conviction entries.
 
 any change to these should go through reviewed PRs only.
 

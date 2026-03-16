@@ -4,7 +4,7 @@
 
   "strategy": {
     "default_id": "conservative",
-    "allowed_ids": ["conservative", "aggressive", "super_aggressive"],
+    "allowed_ids": ["conservative", "aggressive", "super_aggressive", "edge_filtered"],
     "profiles": {
       "conservative": {},
       "aggressive": {
@@ -28,6 +28,17 @@
         "tie_break_to_trend": true,
         "tie_break_min_confidence": 0.14,
         "regime_confidence_floor": 0.22
+      },
+      "edge_filtered": {
+        "risk_pct": 0.05,
+        "max_deployed_pct": 0.90,
+        "max_leverage": 2.0,
+        "min_confidence_to_trade": 0.60,
+        "trend_weight_in_regime": 1.8,
+        "adx_threshold": 16.0,
+        "tie_break_to_trend": true,
+        "tie_break_min_confidence": 0.18,
+        "regime_confidence_floor": 0.28
       }
     }
   },
