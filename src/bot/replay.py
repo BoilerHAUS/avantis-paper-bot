@@ -1,20 +1,26 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from .artifacts import (
+    ARTIFACT_CONTRACT_VERSION,
+    build_decision_artifact,
+    build_effective_config,
+    build_provenance,
+    strategy_fingerprint,
+)
 from .config import DEFAULT_STRATEGY_ID, as_dict, load_config
 from .paper_engine import execute_paper_with_events
 from .risk import compute_risk_budget, plan_from_signal
 from .runtime import default_paper_state, effective_risk_cfg, effective_signal_cfg, paper_state_from_raw
 from .storage import candles_path
-from .strategies import SignalAnalysis, analyze_signal
-from .utils import data_dir, jsonl_write, stable_json_dumps, write_json_stable
+from .strategies import analyze_signal
+from .utils import data_dir, jsonl_write, write_json_stable
 
 
 @dataclass
@@ -68,15 +74,6 @@ def _window_candles(
     return selected, first_ts, last_ts
 
 
-def _strategy_fingerprint(strategy_id: str, effective_risk, signal_cfg) -> str:
-    payload = {
-        "strategy_id": strategy_id,
-        "risk": as_dict(effective_risk),
-        "signal": as_dict(signal_cfg),
-    }
-    return hashlib.sha256(stable_json_dumps(payload).encode("utf-8")).hexdigest()[:12]
-
-
 def _artifact_dir(
     *,
     output_root: Path,
@@ -89,32 +86,6 @@ def _artifact_dir(
 ) -> Path:
     pair_slug = _sanitize_pair(pair)
     return output_root / f"{pair_slug}-{tf_min}m" / f"{start_ts}-{end_ts}" / f"{strategy_id}-{fingerprint}"
-
-
-def _decision_record(signal_analysis: SignalAnalysis, plan) -> dict[str, Any]:
-    if plan.action != "hold":
-        status = "trade"
-        reason = plan.action
-    elif signal_analysis.regime.stand_down:
-        status = "skip"
-        reason = "regime_stand_down"
-    elif signal_analysis.signal.desired == "flat":
-        status = "skip"
-        reason = "signal_flat"
-    elif signal_analysis.setup_label == "no_trade":
-        status = "skip"
-        reason = "no_setup"
-    else:
-        status = "veto"
-        reason = "risk_gate"
-
-    return {
-        "status": status,
-        "reason": reason,
-        "signal_desired": signal_analysis.signal.desired,
-        "plan_action": plan.action,
-        "regime_stand_down": signal_analysis.regime.stand_down,
-    }
 
 
 def _paper_state_dict(state) -> dict[str, Any]:
@@ -165,7 +136,14 @@ def replay_fixed_window(
 
     effective_risk = effective_risk_cfg(cfg, strategy_id)
     signal_cfg = effective_signal_cfg(cfg, strategy_id)
-    fingerprint = _strategy_fingerprint(strategy_id, effective_risk, signal_cfg)
+    fingerprint = strategy_fingerprint(strategy_id, effective_risk, signal_cfg)
+    provenance = build_provenance(
+        strategy_id=strategy_id,
+        strategy_fingerprint=fingerprint,
+        pair=pair,
+        tf_min=tf_min,
+    )
+    effective_config = build_effective_config(effective_risk=effective_risk, signal_cfg=signal_cfg)
     output_dir = _artifact_dir(
         output_root=output_root,
         pair=pair,
@@ -183,7 +161,7 @@ def replay_fixed_window(
     cycles: list[dict[str, Any]] = []
     trades: list[dict[str, Any]] = []
     equity_curve: list[dict[str, Any]] = []
-    skip_counter: Counter[str] = Counter()
+    decision_counter: Counter[str] = Counter()
     setup_counter: Counter[str] = Counter()
     regime_counter: Counter[str] = Counter()
 
@@ -202,6 +180,7 @@ def replay_fixed_window(
             cfg=effective_risk,
         )
 
+        previous_position = None if state.position is None else asdict(state.position)
         if state.position is not None:
             if analysis.signal.desired == "flat":
                 plan.action = "close"
@@ -222,12 +201,16 @@ def replay_fixed_window(
             slip_bps=slip_bps,
             ts=candle_ts,
         )
-        decision = _decision_record(analysis, plan)
-        skip_counter[decision["status"]] += 1
+        execution_payload = [asdict(event) for event in execution_events]
+        decision = build_decision_artifact(
+            analysis=analysis,
+            plan=plan,
+            previous_position=previous_position,
+            execution_events=execution_payload,
+        )
+        decision_counter[decision["decision_status"]] += 1
         setup_counter[analysis.setup_label] += 1
         regime_counter[analysis.regime_label] += 1
-
-        execution_payload = [asdict(event) for event in execution_events]
         trades.extend(execution_payload)
         equity_curve.append(
             {
@@ -261,14 +244,19 @@ def replay_fixed_window(
                 "plan": as_dict(plan),
                 "decision": decision,
                 "risk_budget": as_dict(rb),
+                "effective_config": effective_config,
                 "execution_events": execution_payload,
                 "state": _paper_state_dict(state),
+                "provenance": provenance,
             }
         )
 
     summary = {
+        "artifact_contract_version": ARTIFACT_CONTRACT_VERSION,
         "strategy_id": strategy_id,
         "fingerprint": fingerprint,
+        "provenance": provenance,
+        "effective_config": effective_config,
         "pair": pair,
         "tf_min": tf_min,
         "window": {
@@ -281,7 +269,7 @@ def replay_fixed_window(
         "net_pnl": state.equity - initial_equity,
         "return_pct": (0.0 if initial_equity == 0 else (state.equity / initial_equity - 1.0)),
         "max_drawdown_pct": _max_drawdown(equity_curve),
-        "decision_counts": dict(sorted(skip_counter.items())),
+        "decision_counts": dict(sorted(decision_counter.items())),
         "setup_counts": dict(sorted(setup_counter.items())),
         "regime_counts": dict(sorted(regime_counter.items())),
         "execution_event_count": len(trades),
@@ -291,9 +279,12 @@ def replay_fixed_window(
         ),
     }
     manifest = {
+        "artifact_contract_version": ARTIFACT_CONTRACT_VERSION,
         "contract_version": "replay.v1",
         "strategy_id": strategy_id,
         "fingerprint": fingerprint,
+        "provenance": provenance,
+        "effective_config": effective_config,
         "pair": pair,
         "tf_min": tf_min,
         "window": summary["window"],
@@ -302,10 +293,7 @@ def replay_fixed_window(
             "slip_bps": slip_bps,
             "initial_equity": initial_equity,
         },
-        "effective_config": {
-            "risk": as_dict(effective_risk),
-            "signal": as_dict(signal_cfg),
-        },
+        "effective_config": effective_config,
         "schemas": {
             "regime_classifier": "regime_classifier.v1",
         },

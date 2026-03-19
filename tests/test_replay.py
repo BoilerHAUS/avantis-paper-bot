@@ -87,9 +87,14 @@ def test_replay_outputs_are_deterministic(monkeypatch, tmp_path: Path) -> None:
             second.output_dir / name
         ).read_text(encoding="utf-8")
 
-    assert first.summary["trade_count"] == 3
-    assert first.summary["decision_counts"] == {"skip": 14, "trade": 3, "veto": 14}
-    assert any(row["decision"]["status"] == "veto" for row in first.cycles)
+    assert first.summary["trade_count"] == 4
+    assert first.summary["decision_counts"] == {"close": 1, "forced_exit": 2, "hold": 14, "open": 4, "skip": 10}
+    assert first.summary["provenance"]["strategy_id"] == "aggressive"
+    assert first.summary["effective_config"]["risk"]["min_confidence_to_trade"] == 0.6
+    assert any(row["decision"]["decision_status"] == "forced_exit" for row in first.cycles)
+    assert any(row["decision"]["decision_status"] == "hold" for row in first.cycles)
+    assert all(row["provenance"]["strategy_fingerprint"] == first.fingerprint for row in first.cycles)
+    assert all(row["effective_config"]["signal"]["adx_threshold"] is not None for row in first.cycles)
     assert any(row["analysis"]["regime_label"] == "trend_up" for row in first.cycles)
     assert all("regime_classifier" in row["analysis"] for row in first.cycles)
     assert first.manifest["schemas"]["regime_classifier"] == "regime_classifier.v1"
@@ -128,6 +133,7 @@ def test_replay_comparison_uses_same_window(monkeypatch, tmp_path: Path) -> None
     assert baseline.summary["window"] == candidate.summary["window"] == comparison["window"]
     assert comparison["baseline"]["strategy_id"] == "conservative"
     assert comparison["candidate"]["strategy_id"] == "aggressive"
-    assert comparison["delta"]["trade_count"] == 3
+    assert comparison["delta"]["trade_count"] == 4
     assert comparison["baseline"]["summary"]["trade_count"] == 0
-    assert comparison["candidate"]["summary"]["trade_count"] == 3
+    assert comparison["candidate"]["summary"]["trade_count"] == 4
+    assert comparison["candidate"]["summary"]["artifact_contract_version"] == "decision_artifact.v1"
