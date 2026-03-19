@@ -7,7 +7,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .artifacts import ARTIFACT_CONTRACT_VERSION, build_decision_artifact, build_provenance, strategy_fingerprint
+from .artifacts import (
+    ARTIFACT_CONTRACT_VERSION,
+    build_decision_artifact,
+    build_effective_config,
+    build_provenance,
+    strategy_fingerprint,
+)
 from .config import DEFAULT_STRATEGY_ID, as_dict, load_config
 from .paper_engine import execute_paper_with_events
 from .risk import compute_risk_budget, plan_from_signal
@@ -137,6 +143,7 @@ def replay_fixed_window(
         pair=pair,
         tf_min=tf_min,
     )
+    effective_config = build_effective_config(effective_risk=effective_risk, signal_cfg=signal_cfg)
     output_dir = _artifact_dir(
         output_root=output_root,
         pair=pair,
@@ -236,6 +243,7 @@ def replay_fixed_window(
                 "plan": as_dict(plan),
                 "decision": decision,
                 "risk_budget": as_dict(rb),
+                "effective_config": effective_config,
                 "execution_events": execution_payload,
                 "state": _paper_state_dict(state),
                 "provenance": provenance,
@@ -247,6 +255,7 @@ def replay_fixed_window(
         "strategy_id": strategy_id,
         "fingerprint": fingerprint,
         "provenance": provenance,
+        "effective_config": effective_config,
         "pair": pair,
         "tf_min": tf_min,
         "window": {
@@ -274,6 +283,7 @@ def replay_fixed_window(
         "strategy_id": strategy_id,
         "fingerprint": fingerprint,
         "provenance": provenance,
+        "effective_config": effective_config,
         "pair": pair,
         "tf_min": tf_min,
         "window": summary["window"],
@@ -282,10 +292,7 @@ def replay_fixed_window(
             "slip_bps": slip_bps,
             "initial_equity": initial_equity,
         },
-        "effective_config": {
-            "risk": as_dict(effective_risk),
-            "signal": as_dict(signal_cfg),
-        },
+        "effective_config": effective_config,
         "artifacts": {
             "summary": "summary.json",
             "manifest": "manifest.json",

@@ -41,6 +41,31 @@ def build_provenance(
     }
 
 
+def build_effective_config(*, effective_risk: Any, signal_cfg: Any) -> dict[str, Any]:
+    risk = as_dict(effective_risk)
+    signal = as_dict(signal_cfg)
+    return {
+        "risk": {
+            "risk_pct": risk.get("risk_pct"),
+            "min_risk_usd": risk.get("min_risk_usd"),
+            "max_risk_usd": risk.get("max_risk_usd"),
+            "max_deployed_pct": risk.get("max_deployed_pct"),
+            "max_leverage": risk.get("max_leverage"),
+            "min_confidence_to_trade": risk.get("min_confidence_to_trade"),
+            "daily_kill_switch_pct": risk.get("daily_kill_switch_pct"),
+        },
+        "signal": {
+            "trend_weight": signal.get("trend_weight"),
+            "trend_weight_in_regime": signal.get("trend_weight_in_regime"),
+            "mr_weight": signal.get("mr_weight"),
+            "adx_threshold": signal.get("adx_threshold"),
+            "regime_confidence_floor": signal.get("regime_confidence_floor"),
+            "tie_break_to_trend": signal.get("tie_break_to_trend"),
+            "tie_break_min_confidence": signal.get("tie_break_min_confidence"),
+        },
+    }
+
+
 def build_decision_artifact(
     *,
     analysis: Any | None,

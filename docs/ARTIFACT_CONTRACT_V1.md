@@ -14,6 +14,17 @@ Each decision artifact MUST include a `provenance` object with:
 - `symbol`: currently mirrors `pair` until runtime exposes a distinct symbol field
 - `timeframe_min`: candle timeframe in minutes
 
+## Effective runtime thresholds / config
+Each decision artifact MUST include an `effective_config` object with compact decision-relevant runtime values:
+- `risk.min_confidence_to_trade`
+- `risk.risk_pct`, `risk.min_risk_usd`, `risk.max_risk_usd`
+- `risk.max_deployed_pct`, `risk.max_leverage`, `risk.daily_kill_switch_pct`
+- `signal.trend_weight`, `signal.trend_weight_in_regime`, `signal.mr_weight`
+- `signal.adx_threshold`, `signal.regime_confidence_floor`
+- `signal.tie_break_to_trend`, `signal.tie_break_min_confidence`
+
+This object is intentionally compact: enough for forensic review to explain the effective thresholds in force without embedding the entire raw config blob.
+
 ## Canonical decision fields
 Each decision artifact MUST include a `decision` object with:
 - `regime`: machine-comparable regime label such as `trend_up`, `trend_down`, `range`, `transition`, `unknown`

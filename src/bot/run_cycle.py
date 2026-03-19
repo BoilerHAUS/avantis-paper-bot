@@ -6,7 +6,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .artifacts import ARTIFACT_CONTRACT_VERSION, build_decision_artifact, build_provenance, strategy_fingerprint
+from .artifacts import (
+    ARTIFACT_CONTRACT_VERSION,
+    build_decision_artifact,
+    build_effective_config,
+    build_provenance,
+    strategy_fingerprint,
+)
 from .config import DEFAULT_STRATEGY_ID, as_dict, load_config
 from .paper_engine import execute_paper_with_events
 from .risk import compute_risk_budget, plan_from_signal
@@ -77,6 +83,7 @@ def main() -> None:
         pair=args.pair,
         tf_min=args.tf_min,
     )
+    effective_config = build_effective_config(effective_risk=effective_risk, signal_cfg=signal_cfg)
 
     rb = compute_risk_budget(float(paper.equity), effective_risk)
     closes = [float(c["c"]) for c in candles if "c" in c]
@@ -139,6 +146,7 @@ def main() -> None:
             "type": "cycle",
             "artifact_contract_version": ARTIFACT_CONTRACT_VERSION,
             "provenance": provenance,
+            "effective_config": effective_config,
             "decision": decision,
             "strategy_id": strategy_id,
             "fingerprint": fingerprint,
@@ -177,6 +185,7 @@ def main() -> None:
     snapshot = {
         "artifact_contract_version": ARTIFACT_CONTRACT_VERSION,
         "provenance": provenance,
+        "effective_config": effective_config,
         "decision": decision,
         "ts": now_ts,
         "strategy_id": strategy_id,

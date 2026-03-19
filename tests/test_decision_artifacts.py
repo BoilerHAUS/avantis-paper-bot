@@ -4,8 +4,9 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
-from bot.artifacts import ARTIFACT_CONTRACT_VERSION, build_decision_artifact
+from bot.artifacts import ARTIFACT_CONTRACT_VERSION, build_decision_artifact, build_effective_config
 from bot.models import OrderPlan, Signal
 from bot.run_cycle import main as run_cycle_main
 from bot.storage import candles_path, journal_path, snapshot_path, state_path
@@ -43,6 +44,51 @@ def _plan(action: str, note: str = "combo conf=0.80") -> OrderPlan:
         risk_usd=10.0,
         note=note,
     )
+
+
+def test_effective_config_is_compact_and_stable() -> None:
+    effective = build_effective_config(
+        effective_risk=SimpleNamespace(
+            risk_pct=0.01,
+            min_risk_usd=10.0,
+            max_risk_usd=25.0,
+            max_deployed_pct=0.5,
+            max_leverage=2.0,
+            min_confidence_to_trade=0.6,
+            daily_kill_switch_pct=-0.08,
+        ),
+        signal_cfg=SimpleNamespace(
+            trend_weight=1.0,
+            trend_weight_in_regime=1.8,
+            mr_weight=0.8,
+            adx_threshold=16.0,
+            regime_confidence_floor=0.28,
+            tie_break_to_trend=True,
+            tie_break_min_confidence=0.55,
+        ),
+    )
+
+    assert stable_json_dumps(effective) == """{
+  \"risk\": {
+    \"daily_kill_switch_pct\": -0.08,
+    \"max_deployed_pct\": 0.5,
+    \"max_leverage\": 2.0,
+    \"max_risk_usd\": 25.0,
+    \"min_confidence_to_trade\": 0.6,
+    \"min_risk_usd\": 10.0,
+    \"risk_pct\": 0.01
+  },
+  \"signal\": {
+    \"adx_threshold\": 16.0,
+    \"mr_weight\": 0.8,
+    \"regime_confidence_floor\": 0.28,
+    \"tie_break_min_confidence\": 0.55,
+    \"tie_break_to_trend\": true,
+    \"trend_weight\": 1.0,
+    \"trend_weight_in_regime\": 1.8
+  }
+}
+"""
 
 
 def test_decision_contract_serialization_is_stable() -> None:
@@ -247,6 +293,8 @@ def test_run_cycle_writes_contract_to_journal_and_snapshot(monkeypatch, tmp_path
     assert journal_payload["decision"]["decision_status"] == "hold"
     assert journal_payload["decision"]["decision_reason"] == "existing_position"
     assert journal_payload["decision"]["regime"] == snapshot["decision"]["regime"]
+    assert journal_payload["effective_config"]["risk"]["min_confidence_to_trade"] == 0.6
     assert snapshot["artifact_contract_version"] == ARTIFACT_CONTRACT_VERSION
     assert snapshot["decision"]["decision_status"] == "hold"
     assert snapshot["decision"]["setup_type"] == "trend_follow_long"
+    assert snapshot["effective_config"]["signal"]["trend_weight_in_regime"] is not None
