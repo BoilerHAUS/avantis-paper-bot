@@ -30,6 +30,18 @@ Every PR must include:
 - Risk impact (especially sizing/leverage/kill-switch)
 - Rollback plan
 - Validation evidence (logs/screenshots/commands)
+- Roadmap linkage for substantive work:
+  - roadmap phase/item
+  - linked issue(s)
+  - whether the PR completes, advances, or only partially satisfies the roadmap item
+
+For roadmap-bearing work, contributors should regenerate roadmap status before or during PR prep:
+
+```bash
+./scripts/render_roadmap.py
+```
+
+Ambiguous PRs must not silently advance roadmap state. If a PR is only a partial step, the PR body and linked issue thread must say so explicitly.
 
 ### Required CI checks
 

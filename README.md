@@ -32,6 +32,7 @@ see:
 - `/home/boiler/.openclaw/workspace/LIVE_CHECKLIST.md` (ops companion checklist)
 - `docs/strategy/EXPERIMENTATION_FRAMEWORK_V1.md` (scientific experimentation doctrine)
 - `docs/strategy/EXPERIMENT_GOVERNANCE_POLICY_V1.md` (review, promotion, rejection, and rollback policy)
+- `docs/roadmap/EXPERIMENTATION_ROADMAP_STATUS.md` (generated roadmap / distance-to-readiness status)
 - `docs/README.md` (canonical docs index)
 
 ---
