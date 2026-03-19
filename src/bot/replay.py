@@ -95,6 +95,9 @@ def _decision_record(signal_analysis: SignalAnalysis, plan) -> dict[str, Any]:
     if plan.action != "hold":
         status = "trade"
         reason = plan.action
+    elif signal_analysis.regime.stand_down:
+        status = "skip"
+        reason = "regime_stand_down"
     elif signal_analysis.signal.desired == "flat":
         status = "skip"
         reason = "signal_flat"
@@ -110,6 +113,7 @@ def _decision_record(signal_analysis: SignalAnalysis, plan) -> dict[str, Any]:
         "reason": reason,
         "signal_desired": signal_analysis.signal.desired,
         "plan_action": plan.action,
+        "regime_stand_down": signal_analysis.regime.stand_down,
     }
 
 
@@ -246,6 +250,7 @@ def replay_fixed_window(
                     "tf_sec": int(candle.get("tf_sec", tf_min * 60)),
                 },
                 "analysis": {
+                    "regime_classifier": as_dict(analysis.regime),
                     "regime_label": analysis.regime_label,
                     "regime_note": analysis.regime_note,
                     "setup_label": analysis.setup_label,
@@ -300,6 +305,9 @@ def replay_fixed_window(
         "effective_config": {
             "risk": as_dict(effective_risk),
             "signal": as_dict(signal_cfg),
+        },
+        "schemas": {
+            "regime_classifier": "regime_classifier.v1",
         },
         "artifacts": {
             "summary": "summary.json",

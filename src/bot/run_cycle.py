@@ -10,7 +10,7 @@ from .config import DEFAULT_STRATEGY_ID, as_dict, load_config
 from .paper_engine import execute_paper
 from .risk import compute_risk_budget, plan_from_signal
 from .runtime import default_paper_state, effective_risk_cfg, effective_signal_cfg, paper_state_from_raw
-from .strategies import choose_signal
+from .strategies import analyze_signal
 from .storage import candles_path, journal_path, snapshot_path, state_path
 from .utils import jsonl_append, read_json, write_json
 
@@ -67,14 +67,15 @@ def main() -> None:
 
     now_ts = int(datetime.now().timestamp())
 
-    effective_risk = _effective_risk_cfg(cfg, strategy_id)
-    signal_cfg = _effective_signal_cfg(cfg, strategy_id)
+    effective_risk = effective_risk_cfg(cfg, strategy_id)
+    signal_cfg = effective_signal_cfg(cfg, strategy_id)
 
     rb = compute_risk_budget(float(paper.equity), effective_risk)
     closes = [float(c["c"]) for c in candles if "c" in c]
     last_price = closes[-1] if closes else float(paper.last_price or 0.0)
 
-    sig = choose_signal(candles, cfg=signal_cfg) if closes else None
+    analysis = analyze_signal(candles, cfg=signal_cfg) if closes else None
+    sig = analysis.signal if analysis else None
 
     if sig is None or last_price <= 0:
         plan = None
@@ -132,6 +133,7 @@ def main() -> None:
                 "last_price": paper.last_price,
             },
             "signal": sig.__dict__ if sig else None,
+            "regime_classifier": (as_dict(analysis.regime) if analysis else None),
             "plan": plan.__dict__ if plan else None,
             "candles_loaded": len(candles),
         },
@@ -149,6 +151,7 @@ def main() -> None:
         "risk_budget": rb.__dict__,
         "candles_loaded": len(candles),
         "signal": sig.__dict__ if sig else None,
+        "regime_classifier": (as_dict(analysis.regime) if analysis else None),
         "plan": plan.__dict__ if plan else None,
         "status": "idle" if paper.position is None else "in_position",
         "note": res.note,

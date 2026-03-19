@@ -87,10 +87,12 @@ def test_replay_outputs_are_deterministic(monkeypatch, tmp_path: Path) -> None:
             second.output_dir / name
         ).read_text(encoding="utf-8")
 
-    assert first.summary["trade_count"] == 4
-    assert first.summary["decision_counts"] == {"skip": 10, "trade": 5, "veto": 16}
+    assert first.summary["trade_count"] == 3
+    assert first.summary["decision_counts"] == {"skip": 14, "trade": 3, "veto": 14}
     assert any(row["decision"]["status"] == "veto" for row in first.cycles)
     assert any(row["analysis"]["regime_label"] == "trend_up" for row in first.cycles)
+    assert all("regime_classifier" in row["analysis"] for row in first.cycles)
+    assert first.manifest["schemas"]["regime_classifier"] == "regime_classifier.v1"
     assert any(trade["kind"] == "take_profit_partial" for trade in first.trades)
 
 
@@ -126,6 +128,6 @@ def test_replay_comparison_uses_same_window(monkeypatch, tmp_path: Path) -> None
     assert baseline.summary["window"] == candidate.summary["window"] == comparison["window"]
     assert comparison["baseline"]["strategy_id"] == "conservative"
     assert comparison["candidate"]["strategy_id"] == "aggressive"
-    assert comparison["delta"]["trade_count"] == 4
+    assert comparison["delta"]["trade_count"] == 3
     assert comparison["baseline"]["summary"]["trade_count"] == 0
-    assert comparison["candidate"]["summary"]["trade_count"] == 4
+    assert comparison["candidate"]["summary"]["trade_count"] == 3

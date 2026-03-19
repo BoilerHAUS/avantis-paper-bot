@@ -11,7 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .indicators import adx, sma, zscore
-from .models import Signal
+from .models import MarketRegime, RegimeClassifierOutput, Signal
+
+REGIME_CLASSIFIER_SCHEMA_VERSION = "regime_classifier.v1"
 
 
 @dataclass
@@ -43,9 +45,16 @@ class SignalAnalysis:
     signal: Signal
     trend_signal: Signal
     mean_reversion_signal: Signal
-    regime_label: str
-    regime_note: str
+    regime: RegimeClassifierOutput
     setup_label: str
+
+    @property
+    def regime_label(self) -> str:
+        return self.regime.label.value
+
+    @property
+    def regime_note(self) -> str:
+        return self.regime.note
 
 
 def trend_signal(closes: list[float], cfg: StrategyConfig) -> Signal:
@@ -85,11 +94,48 @@ def mean_reversion_signal(closes: list[float], cfg: StrategyConfig) -> Signal:
     return Signal(desired="flat", confidence=0.4, strategy="mean_reversion", note=f"z={z:.2f} (neutral)")
 
 
-def _trend_regime(closes: list[float], highs: list[float], lows: list[float], cfg: StrategyConfig) -> tuple[bool, str]:
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _normalize_scores(scores: dict[MarketRegime, float]) -> dict[str, float]:
+    total = sum(max(0.0, score) for score in scores.values())
+    if total <= 0:
+        equal = round(1.0 / len(scores), 6)
+        out = {regime.value: equal for regime in scores}
+        remainder = round(1.0 - sum(out.values()), 6)
+        out[MarketRegime.TRANSITION.value] = round(out[MarketRegime.TRANSITION.value] + remainder, 6)
+        return out
+
+    normalized = {
+        regime.value: round(max(0.0, score) / total, 6)
+        for regime, score in scores.items()
+    }
+    diff = round(1.0 - sum(normalized.values()), 6)
+    top_regime = max(scores, key=scores.get).value
+    normalized[top_regime] = round(normalized[top_regime] + diff, 6)
+    return normalized
+
+
+def _trend_features(
+    closes: list[float], highs: list[float], lows: list[float], cfg: StrategyConfig
+) -> tuple[dict[str, float | str | bool | None], str]:
     f = sma(closes, cfg.trend_fast)
     s = sma(closes, cfg.trend_slow)
     if f is None or s is None or s == 0:
-        return False, "insufficient ma"
+        return (
+            {
+                "adx": None,
+                "adx_strength": 0.0,
+                "spread_ratio": 0.0,
+                "spread_strength": 0.0,
+                "slope_ratio": 0.0,
+                "slope_strength": 0.0,
+                "trend_strength": 0.0,
+                "trend_ready": False,
+            },
+            "insufficient ma",
+        )
 
     if len(closes) < cfg.trend_fast + 3:
         slope = 0.0
@@ -100,20 +146,145 @@ def _trend_regime(closes: list[float], highs: list[float], lows: list[float], cf
     spread = abs((f - s) / s)
     a = adx(highs, lows, closes, n=cfg.adx_n)
     if a is None:
-        return False, "insufficient adx"
+        return (
+            {
+                "adx": None,
+                "adx_strength": 0.0,
+                "spread_ratio": round(spread, 6),
+                "spread_strength": _clamp01(spread / max(cfg.min_spread_ratio, 1e-9)),
+                "slope_ratio": round(abs(slope), 6),
+                "slope_strength": _clamp01(abs(slope) / max(cfg.min_slope_ratio, 1e-9)),
+                "trend_strength": 0.0,
+                "trend_ready": False,
+            },
+            "insufficient adx",
+        )
 
-    ok = a >= cfg.adx_threshold and spread >= cfg.min_spread_ratio and abs(slope) >= cfg.min_slope_ratio
-    return ok, f"adx={a:.1f} spread={spread:.4f} slope={slope:.4f}"
+    adx_strength = _clamp01(a / max(cfg.adx_threshold * 2.0, 1e-9))
+    spread_strength = _clamp01(spread / max(cfg.min_spread_ratio * 2.0, 1e-9))
+    slope_strength = _clamp01(abs(slope) / max(cfg.min_slope_ratio * 2.0, 1e-9))
+    trend_strength = round((adx_strength + spread_strength + slope_strength) / 3.0, 6)
+    return (
+        {
+            "adx": round(a, 6),
+            "adx_strength": round(adx_strength, 6),
+            "spread_ratio": round(spread, 6),
+            "spread_strength": round(spread_strength, 6),
+            "slope_ratio": round(abs(slope), 6),
+            "slope_strength": round(slope_strength, 6),
+            "trend_strength": trend_strength,
+            "trend_ready": True,
+        },
+        f"adx={a:.1f} spread={spread:.4f} slope={slope:.4f}",
+    )
 
 
-def analyze_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> SignalAnalysis:
+def classify_regime(candles: list[dict], cfg: StrategyConfig | None = None) -> RegimeClassifierOutput:
     cfg = cfg or StrategyConfig()
     closes = [float(c["c"]) for c in candles if "c" in c]
     highs = [float(c["h"]) for c in candles if "h" in c]
     lows = [float(c["l"]) for c in candles if "l" in c]
 
     if not closes:
+        probabilities = _normalize_scores(
+            {
+                MarketRegime.TREND_UP: 0.0,
+                MarketRegime.TREND_DOWN: 0.0,
+                MarketRegime.RANGE: 0.0,
+                MarketRegime.TRANSITION: 1.0,
+            }
+        )
+        return RegimeClassifierOutput(
+            schema_version=REGIME_CLASSIFIER_SCHEMA_VERSION,
+            label=MarketRegime.TRANSITION,
+            confidence=1.0,
+            probabilities=probabilities,
+            stand_down=True,
+            uncertainty_score=1.0,
+            note="no candles",
+            features={
+                "trend_ready": False,
+                "trend_desired": "flat",
+                "trend_confidence": 0.0,
+                "mean_reversion_desired": "flat",
+                "mean_reversion_confidence": 0.0,
+                "conflict_score": 1.0,
+            },
+        )
+
+    trend = trend_signal(closes, cfg)
+    mean_reversion = mean_reversion_signal(closes, cfg)
+    trend_features, note = _trend_features(closes, highs, lows, cfg)
+
+    trend_strength = float(trend_features["trend_strength"])
+    mr_active = mean_reversion.desired in {"long", "short"}
+    mr_strength = mean_reversion.confidence if mr_active else 0.0
+    directional_conflict = trend.desired in {"long", "short"} and mr_active and trend.desired != mean_reversion.desired
+    unresolved = trend.desired == "flat" and mean_reversion.desired == "flat"
+    insufficient = not bool(trend_features["trend_ready"]) or trend.note.startswith("insufficient") or mean_reversion.note.startswith(
+        "insufficient"
+    )
+    range_baseline = 0.55 if unresolved and trend_strength < 0.35 else 0.2
+
+    scores = {
+        MarketRegime.TREND_UP: (trend_strength * max(trend.confidence, 0.25)) if trend.desired == "long" else 0.0,
+        MarketRegime.TREND_DOWN: (trend_strength * max(trend.confidence, 0.25)) if trend.desired == "short" else 0.0,
+        MarketRegime.RANGE: (1.0 - trend_strength) * max(mr_strength, range_baseline),
+        MarketRegime.TRANSITION: 0.0,
+    }
+    scores[MarketRegime.TRANSITION] = max(
+        0.02,
+        1.0 - max(scores[MarketRegime.TREND_UP], scores[MarketRegime.TREND_DOWN], scores[MarketRegime.RANGE]),
+        0.8 if insufficient else 0.0,
+        0.7 if directional_conflict else 0.0,
+        0.4 if unresolved else 0.0,
+    )
+
+    probabilities = _normalize_scores(scores)
+    label = max(scores, key=scores.get)
+    confidence = probabilities[label.value]
+    uncertainty_score = round(1.0 - confidence, 6)
+    stand_down = label is MarketRegime.TRANSITION or uncertainty_score >= 0.45
+
+    features = {
+        **trend_features,
+        "trend_desired": trend.desired,
+        "trend_confidence": round(trend.confidence, 6),
+        "mean_reversion_desired": mean_reversion.desired,
+        "mean_reversion_confidence": round(mean_reversion.confidence, 6),
+        "conflict_score": round(
+            max(
+                0.0,
+                1.0 if insufficient else 0.0,
+                0.8 if directional_conflict else 0.0,
+                0.4 if unresolved else 0.0,
+                1.0 - max(scores[MarketRegime.TREND_UP], scores[MarketRegime.TREND_DOWN], scores[MarketRegime.RANGE]),
+            ),
+            6,
+        ),
+    }
+    if not features["trend_ready"]:
+        note = f"{note}; transition by classifier"
+
+    return RegimeClassifierOutput(
+        schema_version=REGIME_CLASSIFIER_SCHEMA_VERSION,
+        label=label,
+        confidence=round(confidence, 6),
+        probabilities=probabilities,
+        stand_down=stand_down,
+        uncertainty_score=uncertainty_score,
+        note=note,
+        features=features,
+    )
+
+
+def analyze_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> SignalAnalysis:
+    cfg = cfg or StrategyConfig()
+    closes = [float(c["c"]) for c in candles if "c" in c]
+
+    if not closes:
         empty = Signal(desired="flat", confidence=0.0, strategy="combo", note="no candles")
+        regime = classify_regime(candles, cfg)
         return SignalAnalysis(
             signal=empty,
             trend_signal=Signal(desired="flat", confidence=0.0, strategy="trend", note="no candles"),
@@ -123,25 +294,15 @@ def analyze_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Si
                 strategy="mean_reversion",
                 note="no candles",
             ),
-            regime_label="unknown",
-            regime_note="no candles",
+            regime=regime,
             setup_label="no_trade",
         )
 
     t = trend_signal(closes, cfg)
     m = mean_reversion_signal(closes, cfg)
-    regime_on, regime_note = _trend_regime(closes, highs, lows, cfg)
-    if regime_on and t.desired == "long":
-        regime_label = "trend_up"
-    elif regime_on and t.desired == "short":
-        regime_label = "trend_down"
-    elif t.note.startswith("insufficient") or m.note.startswith("insufficient"):
-        regime_label = "unknown"
-    elif m.desired in {"long", "short"}:
-        regime_label = "range"
-    else:
-        regime_label = "transition"
+    regime = classify_regime(candles, cfg)
 
+    regime_on = regime.label in {MarketRegime.TREND_UP, MarketRegime.TREND_DOWN}
     tw = cfg.trend_weight_in_regime if regime_on else cfg.trend_weight
     mw = cfg.mr_weight
 
@@ -160,13 +321,12 @@ def analyze_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Si
         short_score += m.confidence * mw
 
     if long_score <= 0 and short_score <= 0:
-        signal = Signal(desired="flat", confidence=0.35, strategy="combo", note=f"both flat | {regime_note}")
+        signal = Signal(desired="flat", confidence=0.35, strategy="combo", note=f"both flat | {regime.note}")
         return SignalAnalysis(
             signal=signal,
             trend_signal=t,
             mean_reversion_signal=m,
-            regime_label=regime_label,
-            regime_note=regime_note,
+            regime=regime,
             setup_label=setup_label,
         )
 
@@ -180,13 +340,12 @@ def analyze_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Si
             setup_label = "trend_follow_long"
         elif m.desired == "long":
             setup_label = "mean_reversion_long"
-        signal = Signal(desired="long", confidence=conf, strategy="combo", note=f"weighted long ({regime_note})")
+        signal = Signal(desired="long", confidence=conf, strategy="combo", note=f"weighted long ({regime.note})")
         return SignalAnalysis(
             signal=signal,
             trend_signal=t,
             mean_reversion_signal=m,
-            regime_label=regime_label,
-            regime_note=regime_note,
+            regime=regime,
             setup_label=setup_label,
         )
 
@@ -200,13 +359,12 @@ def analyze_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Si
             setup_label = "trend_follow_short"
         elif m.desired == "short":
             setup_label = "mean_reversion_short"
-        signal = Signal(desired="short", confidence=conf, strategy="combo", note=f"weighted short ({regime_note})")
+        signal = Signal(desired="short", confidence=conf, strategy="combo", note=f"weighted short ({regime.note})")
         return SignalAnalysis(
             signal=signal,
             trend_signal=t,
             mean_reversion_signal=m,
-            regime_label=regime_label,
-            regime_note=regime_note,
+            regime=regime,
             setup_label=setup_label,
         )
 
@@ -217,24 +375,22 @@ def analyze_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Si
             desired=t.desired,
             confidence=min(1.0, conf),
             strategy="combo",
-            note=f"regime tie-break via trend ({regime_note})",
+            note=f"regime tie-break via trend ({regime.note})",
         )
         return SignalAnalysis(
             signal=signal,
             trend_signal=t,
             mean_reversion_signal=m,
-            regime_label=regime_label,
-            regime_note=regime_note,
+            regime=regime,
             setup_label="regime_tie_break",
         )
 
-    signal = Signal(desired="flat", confidence=0.4, strategy="combo", note=f"tie/noise ({regime_note})")
+    signal = Signal(desired="flat", confidence=0.4, strategy="combo", note=f"tie/noise ({regime.note})")
     return SignalAnalysis(
         signal=signal,
         trend_signal=t,
         mean_reversion_signal=m,
-        regime_label=regime_label,
-        regime_note=regime_note,
+        regime=regime,
         setup_label=setup_label,
     )
 
