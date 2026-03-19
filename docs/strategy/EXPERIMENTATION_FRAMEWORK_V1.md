@@ -34,7 +34,9 @@ Experiments move through these states:
    - evidence pack is complete
    - reviewer can make a deterministic decision
 4. `promoted`
-   - variant is accepted as the new approved lane or approved candidate
+   - variant is explicitly approved for operational use in one of two ways:
+     - it becomes the new baseline for its target regime or lane, or
+     - it becomes an approved paper lane that is allowed to continue under standard review until final replacement criteria are met
 5. `retained_experimental`
    - variant shows promise but evidence is incomplete or mixed
    - allowed to continue only with explicit follow-up questions
@@ -89,6 +91,8 @@ Replay results MUST report at minimum:
 - exposure / deployed capital profile
 - regime coverage
 - stability across windows
+
+Good pnl on too few trades, too little time, or too little regime coverage is **not** promotion-grade evidence. Even when exact numeric thresholds are still evolving, reviewers must treat sample sufficiency as a first-class gate.
 
 Where possible, the report should also show why the result happened, not just that it happened.
 
@@ -180,6 +184,8 @@ A decision-ready review should leave behind:
 - explicit decision outcome
 - named reviewer or review authority
 - date/time of decision
+
+Evidence artifacts should be stored in one predictable repo location or naming scheme rather than scattered ad hoc. The exact directory can evolve, but each experiment should produce a clearly named report bundle that includes the experiment id or strategy version so reviewers can find baseline/candidate evidence without guesswork.
 
 If someone reads the repo later, they should be able to answer: what was tested, against what, on which windows, with what result, and why the repo accepted or rejected it.
 
