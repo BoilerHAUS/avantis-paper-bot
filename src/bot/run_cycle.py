@@ -17,7 +17,7 @@ from .config import DEFAULT_STRATEGY_ID, as_dict, load_config
 from .paper_engine import execute_paper_with_events
 from .risk import compute_risk_budget, plan_from_signal
 from .runtime import default_paper_state, effective_risk_cfg, effective_signal_cfg, paper_state_from_raw
-from .strategies import analyze_signal
+from .strategies import analyze_signal, apply_position_management
 from .storage import candles_path, journal_path, snapshot_path, state_path
 from .utils import jsonl_append, read_json, write_json
 
@@ -97,22 +97,7 @@ def main() -> None:
         action_note = "no candles yet"
     else:
         plan = plan_from_signal(signal=sig, candles=candles, last_price=last_price, rb=rb, cfg=effective_risk)
-        # If we already have a position, upgrade open->scale/hold/flip/close based on direction.
-        if paper.position is None:
-            pass
-        else:
-            if sig.desired == "flat":
-                plan.action = "close"
-                plan.side = paper.position.side
-            else:
-                desired_side = "long" if sig.desired == "long" else "short"
-                if desired_side != paper.position.side:
-                    plan.action = "flip"
-                    plan.side = desired_side
-                else:
-                    # for now: hold (later AI can decide scale)
-                    plan.action = "hold"
-                    plan.side = desired_side
+        plan = apply_position_management(plan, analysis, None if paper.position is None else paper.position.side)
 
         action_note = plan.note if plan else "no-plan"
     execution_events: list[dict[str, Any]] = []
@@ -170,6 +155,8 @@ def main() -> None:
                     "regime_label": analysis.regime_label,
                     "regime_note": analysis.regime_note,
                     "setup_label": analysis.setup_label,
+                    "strategy_lane": analysis.strategy_lane,
+                    "invalidation_reason": analysis.invalidation_reason,
                     "trend_signal": as_dict(analysis.trend_signal),
                     "mean_reversion_signal": as_dict(analysis.mean_reversion_signal),
                 }
@@ -205,6 +192,8 @@ def main() -> None:
                 "regime_label": analysis.regime_label,
                 "regime_note": analysis.regime_note,
                 "setup_label": analysis.setup_label,
+                "strategy_lane": analysis.strategy_lane,
+                "invalidation_reason": analysis.invalidation_reason,
                 "trend_signal": as_dict(analysis.trend_signal),
                 "mean_reversion_signal": as_dict(analysis.mean_reversion_signal),
             }

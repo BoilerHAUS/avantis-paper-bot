@@ -38,6 +38,10 @@ def effective_signal_cfg(cfg, strategy_id: str) -> SignalStrategyConfig:
     scfg.tie_break_to_trend = p.tie_break_to_trend
     scfg.tie_break_min_confidence = p.tie_break_min_confidence
     scfg.regime_confidence_floor = p.regime_confidence_floor
+    if p.trend_lane_min_confidence is not None:
+        scfg.trend_lane_min_confidence = p.trend_lane_min_confidence
+    if p.continuation_lookback is not None:
+        scfg.continuation_lookback = p.continuation_lookback
     return scfg
 
 

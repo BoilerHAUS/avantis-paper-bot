@@ -19,7 +19,7 @@ from .paper_engine import execute_paper_with_events
 from .risk import compute_risk_budget, plan_from_signal
 from .runtime import default_paper_state, effective_risk_cfg, effective_signal_cfg, paper_state_from_raw
 from .storage import candles_path
-from .strategies import analyze_signal
+from .strategies import analyze_signal, apply_position_management
 from .utils import data_dir, jsonl_write, write_json_stable
 
 
@@ -179,20 +179,8 @@ def replay_fixed_window(
             rb=rb,
             cfg=effective_risk,
         )
-
         previous_position = None if state.position is None else asdict(state.position)
-        if state.position is not None:
-            if analysis.signal.desired == "flat":
-                plan.action = "close"
-                plan.side = state.position.side
-            else:
-                desired_side = "long" if analysis.signal.desired == "long" else "short"
-                if desired_side != state.position.side:
-                    plan.action = "flip"
-                    plan.side = desired_side
-                else:
-                    plan.action = "hold"
-                    plan.side = desired_side
+        plan = apply_position_management(plan, analysis, None if state.position is None else state.position.side)
 
         state, execution_events = execute_paper_with_events(
             state,
@@ -237,6 +225,8 @@ def replay_fixed_window(
                     "regime_label": analysis.regime_label,
                     "regime_note": analysis.regime_note,
                     "setup_label": analysis.setup_label,
+                    "strategy_lane": analysis.strategy_lane,
+                    "invalidation_reason": analysis.invalidation_reason,
                     "trend_signal": as_dict(analysis.trend_signal),
                     "mean_reversion_signal": as_dict(analysis.mean_reversion_signal),
                 },

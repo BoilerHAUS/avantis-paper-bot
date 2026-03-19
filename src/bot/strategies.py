@@ -1,9 +1,9 @@
 """Deterministic strategies (v0.2).
 
-Adds a weighted blend with trend-day regime detection:
-- Trend signal (fast/slow SMA + slope)
-- Mean-reversion signal (z-score)
-- Regime gate combines MA-structure + ADX strength
+Tradeable path in this slice:
+- one regime-first trend continuation lane
+- explicit continuation setups only in confirmed trend regimes
+- deterministic stand-down outside confirmed trend regimes
 """
 
 from __future__ import annotations
@@ -22,19 +22,17 @@ class StrategyConfig:
     trend_slow: int = 50
     mr_window: int = 50
     mr_entry_z: float = 1.5
-
-    # Weighted blend behavior
     trend_weight: float = 1.0
     mr_weight: float = 1.0
-    trend_weight_in_regime: float = 1.35  # medium priority
+    trend_weight_in_regime: float = 1.35
 
     # Combined trend-day regime filter
     adx_n: int = 14
     adx_threshold: float = 20.0
     min_spread_ratio: float = 0.0015  # |fast-slow|/slow
     min_slope_ratio: float = 0.0008
-
-    # Aggressive-mode knobs
+    trend_lane_min_confidence: float = 0.55
+    continuation_lookback: int = 5
     tie_break_to_trend: bool = False
     tie_break_min_confidence: float = 0.0
     regime_confidence_floor: float = 0.0
@@ -47,6 +45,8 @@ class SignalAnalysis:
     mean_reversion_signal: Signal
     regime: RegimeClassifierOutput
     setup_label: str
+    strategy_lane: str
+    invalidation_reason: str | None = None
 
     @property
     def regime_label(self) -> str:
@@ -278,6 +278,75 @@ def classify_regime(candles: list[dict], cfg: StrategyConfig | None = None) -> R
     )
 
 
+def _continuation_breakout(closes: list[float], lookback: int, side: str) -> bool:
+    if len(closes) <= lookback:
+        return False
+
+    window = closes[-(lookback + 1) : -1]
+    current = closes[-1]
+    if side == "long":
+        return current > max(window)
+    return current < min(window)
+
+
+def _trend_lane_state(
+    closes: list[float],
+    trend: Signal,
+    mean_reversion: Signal,
+    regime: RegimeClassifierOutput,
+    cfg: StrategyConfig,
+) -> tuple[str, Signal, str, str | None]:
+    lane_off = Signal(desired="flat", confidence=0.0, strategy="trend_continuation", note="stand_down")
+
+    if regime.stand_down:
+        return "stand_down", Signal(desired="flat", confidence=0.0, strategy="trend_continuation", note="transition stand_down"), "no_trade", "transition_stand_down"
+    if regime.confidence < cfg.trend_lane_min_confidence:
+        return "stand_down", Signal(desired="flat", confidence=0.0, strategy="trend_continuation", note="regime confidence collapse"), "no_trade", "confidence_collapse"
+    if regime.label not in {MarketRegime.TREND_UP, MarketRegime.TREND_DOWN}:
+        return "stand_down", lane_off, "no_trade", "regime_not_confirmed"
+
+    if regime.label is MarketRegime.TREND_UP:
+        if trend.desired != "long":
+            return "trend_continuation", Signal(desired="flat", confidence=0.0, strategy="trend_continuation", note="trend structure lost"), "no_trade", "trend_structure_lost"
+        if mean_reversion.desired == "long":
+            conf = max(regime.confidence, trend.confidence)
+            return (
+                "trend_continuation",
+                Signal(desired="long", confidence=round(min(1.0, conf), 6), strategy="trend_continuation", note="trend_up pullback_long"),
+                "pullback_long",
+                None,
+            )
+        if _continuation_breakout(closes, cfg.continuation_lookback, "long"):
+            conf = max(regime.confidence, trend.confidence)
+            return (
+                "trend_continuation",
+                Signal(desired="long", confidence=round(min(1.0, conf), 6), strategy="trend_continuation", note="trend_up breakout_long"),
+                "breakout_long",
+                None,
+            )
+        return "trend_continuation", Signal(desired="flat", confidence=0.0, strategy="trend_continuation", note="trend_up waiting for continuation setup"), "no_trade", None
+
+    if trend.desired != "short":
+        return "trend_continuation", Signal(desired="flat", confidence=0.0, strategy="trend_continuation", note="trend structure lost"), "no_trade", "trend_structure_lost"
+    if mean_reversion.desired == "short":
+        conf = max(regime.confidence, trend.confidence)
+        return (
+            "trend_continuation",
+            Signal(desired="short", confidence=round(min(1.0, conf), 6), strategy="trend_continuation", note="trend_down failed_bounce_short"),
+            "failed_bounce_short",
+            None,
+        )
+    if _continuation_breakout(closes, cfg.continuation_lookback, "short"):
+        conf = max(regime.confidence, trend.confidence)
+        return (
+            "trend_continuation",
+            Signal(desired="short", confidence=round(min(1.0, conf), 6), strategy="trend_continuation", note="trend_down breakdown_short"),
+            "breakdown_short",
+            None,
+        )
+    return "trend_continuation", Signal(desired="flat", confidence=0.0, strategy="trend_continuation", note="trend_down waiting for continuation setup"), "no_trade", None
+
+
 def analyze_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> SignalAnalysis:
     cfg = cfg or StrategyConfig()
     closes = [float(c["c"]) for c in candles if "c" in c]
@@ -296,104 +365,52 @@ def analyze_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Si
             ),
             regime=regime,
             setup_label="no_trade",
+            strategy_lane="stand_down",
+            invalidation_reason="no_market_data",
         )
 
     t = trend_signal(closes, cfg)
     m = mean_reversion_signal(closes, cfg)
     regime = classify_regime(candles, cfg)
-
-    regime_on = regime.label in {MarketRegime.TREND_UP, MarketRegime.TREND_DOWN}
-    tw = cfg.trend_weight_in_regime if regime_on else cfg.trend_weight
-    mw = cfg.mr_weight
-
-    long_score = 0.0
-    short_score = 0.0
-    setup_label = "no_trade"
-
-    if t.desired == "long":
-        long_score += t.confidence * tw
-    elif t.desired == "short":
-        short_score += t.confidence * tw
-
-    if m.desired == "long":
-        long_score += m.confidence * mw
-    elif m.desired == "short":
-        short_score += m.confidence * mw
-
-    if long_score <= 0 and short_score <= 0:
-        signal = Signal(desired="flat", confidence=0.35, strategy="combo", note=f"both flat | {regime.note}")
-        return SignalAnalysis(
-            signal=signal,
-            trend_signal=t,
-            mean_reversion_signal=m,
-            regime=regime,
-            setup_label=setup_label,
-        )
-
-    if long_score > short_score + 0.05:
-        conf = min(1.0, long_score / (tw + mw))
-        if regime_on and cfg.regime_confidence_floor > 0:
-            conf = max(conf, cfg.regime_confidence_floor)
-        if t.desired == "long" and m.desired == "long":
-            setup_label = "trend_plus_mean_reversion_long"
-        elif t.desired == "long":
-            setup_label = "trend_follow_long"
-        elif m.desired == "long":
-            setup_label = "mean_reversion_long"
-        signal = Signal(desired="long", confidence=conf, strategy="combo", note=f"weighted long ({regime.note})")
-        return SignalAnalysis(
-            signal=signal,
-            trend_signal=t,
-            mean_reversion_signal=m,
-            regime=regime,
-            setup_label=setup_label,
-        )
-
-    if short_score > long_score + 0.05:
-        conf = min(1.0, short_score / (tw + mw))
-        if regime_on and cfg.regime_confidence_floor > 0:
-            conf = max(conf, cfg.regime_confidence_floor)
-        if t.desired == "short" and m.desired == "short":
-            setup_label = "trend_plus_mean_reversion_short"
-        elif t.desired == "short":
-            setup_label = "trend_follow_short"
-        elif m.desired == "short":
-            setup_label = "mean_reversion_short"
-        signal = Signal(desired="short", confidence=conf, strategy="combo", note=f"weighted short ({regime.note})")
-        return SignalAnalysis(
-            signal=signal,
-            trend_signal=t,
-            mean_reversion_signal=m,
-            regime=regime,
-            setup_label=setup_label,
-        )
-
-    # tie/noisy area
-    if regime_on and cfg.tie_break_to_trend and t.desired in {"long", "short"} and t.confidence >= cfg.tie_break_min_confidence:
-        conf = max(t.confidence, cfg.regime_confidence_floor)
-        signal = Signal(
-            desired=t.desired,
-            confidence=min(1.0, conf),
-            strategy="combo",
-            note=f"regime tie-break via trend ({regime.note})",
-        )
-        return SignalAnalysis(
-            signal=signal,
-            trend_signal=t,
-            mean_reversion_signal=m,
-            regime=regime,
-            setup_label="regime_tie_break",
-        )
-
-    signal = Signal(desired="flat", confidence=0.4, strategy="combo", note=f"tie/noise ({regime.note})")
+    strategy_lane, signal, setup_label, invalidation_reason = _trend_lane_state(closes, t, m, regime, cfg)
     return SignalAnalysis(
         signal=signal,
         trend_signal=t,
         mean_reversion_signal=m,
         regime=regime,
         setup_label=setup_label,
+        strategy_lane=strategy_lane,
+        invalidation_reason=invalidation_reason,
     )
 
 
 def choose_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Signal:
     return analyze_signal(candles, cfg).signal
+
+
+def apply_position_management(plan, analysis: SignalAnalysis | None, current_side: str | None):
+    if plan is None or analysis is None or current_side is None:
+        return plan
+
+    if analysis.invalidation_reason is not None:
+        plan.action = "close"
+        plan.side = current_side
+        plan.note = f"close: {analysis.invalidation_reason}"
+        return plan
+
+    if analysis.signal.desired == "flat":
+        plan.action = "hold"
+        plan.side = current_side
+        plan.note = "hold: active trend lane waiting for continuation setup"
+        return plan
+
+    desired_side = "long" if analysis.signal.desired == "long" else "short"
+    if desired_side != current_side:
+        plan.action = "close"
+        plan.side = current_side
+        plan.note = "close: regime_change_stand_down"
+        return plan
+
+    plan.action = "hold"
+    plan.side = current_side
+    return plan

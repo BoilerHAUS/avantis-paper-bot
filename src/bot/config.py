@@ -51,6 +51,8 @@ class StrategyProfileConfig:
     tie_break_to_trend: bool = False
     tie_break_min_confidence: float = 0.0
     regime_confidence_floor: float = 0.0
+    trend_lane_min_confidence: float | None = None
+    continuation_lookback: int | None = None
 
 
 @dataclass
@@ -126,6 +128,12 @@ def load_config() -> BotConfig:
             tie_break_to_trend=bool(raw.get("tie_break_to_trend", False)),
             tie_break_min_confidence=float(raw.get("tie_break_min_confidence", 0.0)),
             regime_confidence_floor=float(raw.get("regime_confidence_floor", 0.0)),
+            trend_lane_min_confidence=(
+                None if raw.get("trend_lane_min_confidence") is None else float(raw.get("trend_lane_min_confidence"))
+            ),
+            continuation_lookback=(
+                None if raw.get("continuation_lookback") is None else int(raw.get("continuation_lookback"))
+            ),
         )
 
     cfg.strategy = StrategyConfig(default_id=default_id, allowed_ids=allowed_ids, profiles=profiles)

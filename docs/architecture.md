@@ -42,22 +42,19 @@ This repo is a **paper-first** scaffold for trading **Avantis perps** (starting 
 ## What decides long vs short?
 
 ### Signals (`src/bot/strategies.py`)
-`choose_signal(closes)` combines two deterministic strategies:
+`choose_signal(candles)` currently exposes one tradeable lane: `trend_continuation`.
 
-- **Trend (default bias)**
-  - fast/slow SMA cross (20 vs 50)
-  - plus a crude slope proxy (fast SMA delta over 3 bars)
-  - Long when: `fast > slow` AND `slope > 0`
-  - Short when: `fast < slow` AND `slope < 0`
+- The regime classifier must first confirm `trend_up` or `trend_down`
+- Outside confirmed trend regimes, the strategy stands down
+- `trend_up` entries:
+  - `pullback_long`: oversold pullback inside a confirmed uptrend
+  - `breakout_long`: close breaks above the recent continuation lookback window
+- `trend_down` entries:
+  - `failed_bounce_short`: overbought bounce inside a confirmed downtrend
+  - `breakdown_short`: close breaks below the recent continuation lookback window
+- Counter-trend entries are blocked while the lane is active
 
-- **Mean reversion**
-  - z-score of close vs SMA window (50)
-  - Long when: `z <= -1.5` (oversold)
-  - Short when: `z >= +1.5` (overbought)
-
-Resolver:
-- if both agree (non-flat), take that direction
-- else prefer the one with higher confidence
+Mean reversion is still used as an interpretable feature for regime/setup detection, but not as a standalone counter-trend entry lane in this slice.
 
 ### Regime classifier (`src/bot/strategies.py`)
 `classify_regime(candles)` produces one deterministic object with schema version `regime_classifier.v1`:
@@ -85,6 +82,16 @@ Resolver:
   - 0.84–0.92 → 4x
   - ≥0.92 → 5x
   - plus strategy-specific cap: mean reversion max 3x
+
+### Position management
+- No position: open only on one of the explicit continuation setups above
+- Existing aligned position: hold through non-entry candles while the trend lane remains valid
+- Existing position stand-down / close triggers:
+  - `transition_stand_down`
+  - `confidence_collapse`
+  - `regime_not_confirmed`
+  - `trend_structure_lost`
+- On invalidation, the engine closes and stands down rather than flipping directly into the opposite side on the same cycle
 
 ### Paper execution (`src/bot/paper_engine.py`)
 - Single position at a time
