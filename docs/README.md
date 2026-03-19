@@ -18,6 +18,7 @@ Provide one canonical entrypoint for repo documentation so contributors and oper
 | `boilerclaw/LIVE_RUNBOOK.md` | operator | boilerclaw | weekly | yes | production/live runbook and deploy checks |
 | `docs/operations/RUNBOOK_PAPER_V1.md` | operator | boilermolt | weekly | yes | paper-mode start/verify/recover/rollback runbook |
 | `docs/strategy/STRATEGY_CONTRACT_V1.md` | developer/strategy reviewer | boilermolt | weekly | yes | conservative/aggressive profile contract + risk boundaries |
+| `docs/strategy/EXPERIMENTATION_FRAMEWORK_V1.md` | strategy reviewer/governance | boilermolt | weekly | yes | scientific experiment lifecycle, evidence pack, and promotion/rejection doctrine |
 | `docs/dashboard/DASHBOARD_CONTRACT_V1.md` | developer/operator | boilermolt | weekly | yes | dashboard/API metric formulas + rendering/compat rules |
 | `dashboard/README.md` | dashboard operator | shared | weekly | yes | dashboard runtime and endpoints overview |
 | `docs/agent/*` | agent author | shared | monthly | yes | agent behavior contracts and prompts |
@@ -28,6 +29,7 @@ Provide one canonical entrypoint for repo documentation so contributors and oper
 - `boilerclaw/LIVE_RUNBOOK.md`
 
 ### I need to change strategy behavior
+- `docs/strategy/EXPERIMENTATION_FRAMEWORK_V1.md`
 - `docs/strategy/STRATEGY_CONTRACT_V1.md`
 - `docs/architecture.md`
 - `config.example.json`
