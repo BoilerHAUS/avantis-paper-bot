@@ -107,6 +107,7 @@ artifacts are written under `data/replays/<pair>-<tf>m/<start>-<end>/...` with s
 - `equity.jsonl`
 
 the replay path uses stored candles only, records skips/vetoes plus regime/setup labels, and avoids volatile timestamps in diff-critical outputs.
+Decision artifact field meanings and versioning live in [docs/ARTIFACT_CONTRACT_V1.md](docs/ARTIFACT_CONTRACT_V1.md).
 
 ---
 

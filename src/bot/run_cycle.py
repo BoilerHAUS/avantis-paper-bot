@@ -6,11 +6,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .artifacts import ARTIFACT_CONTRACT_VERSION, build_decision_artifact, build_provenance, strategy_fingerprint
 from .config import DEFAULT_STRATEGY_ID, as_dict, load_config
-from .paper_engine import execute_paper
+from .paper_engine import execute_paper_with_events
 from .risk import compute_risk_budget, plan_from_signal
 from .runtime import default_paper_state, effective_risk_cfg, effective_signal_cfg, paper_state_from_raw
-from .strategies import choose_signal
+from .strategies import analyze_signal
 from .storage import candles_path, journal_path, snapshot_path, state_path
 from .utils import jsonl_append, read_json, write_json
 
@@ -67,14 +68,22 @@ def main() -> None:
 
     now_ts = int(datetime.now().timestamp())
 
-    effective_risk = _effective_risk_cfg(cfg, strategy_id)
-    signal_cfg = _effective_signal_cfg(cfg, strategy_id)
+    effective_risk = effective_risk_cfg(cfg, strategy_id)
+    signal_cfg = effective_signal_cfg(cfg, strategy_id)
+    fingerprint = strategy_fingerprint(strategy_id, effective_risk, signal_cfg)
+    provenance = build_provenance(
+        strategy_id=strategy_id,
+        strategy_fingerprint=fingerprint,
+        pair=args.pair,
+        tf_min=args.tf_min,
+    )
 
     rb = compute_risk_budget(float(paper.equity), effective_risk)
     closes = [float(c["c"]) for c in candles if "c" in c]
     last_price = closes[-1] if closes else float(paper.last_price or 0.0)
 
-    sig = choose_signal(candles, cfg=signal_cfg) if closes else None
+    analysis = analyze_signal(candles, cfg=signal_cfg) if closes else None
+    sig = None if analysis is None else analysis.signal
 
     if sig is None or last_price <= 0:
         plan = None
@@ -99,17 +108,28 @@ def main() -> None:
                     plan.side = desired_side
 
         action_note = plan.note if plan else "no-plan"
+    execution_events: list[dict[str, Any]] = []
+    previous_position = None if paper.position is None else paper.position.__dict__.copy()
 
     # Execute paper (vol-based slippage is TODO; placeholder uses 2 bps)
     if plan and last_price > 0:
-        paper = execute_paper(paper, plan, last_price=last_price, slip_bps=2.0, ts=now_ts)
+        paper, raw_events = execute_paper_with_events(paper, plan, last_price=last_price, slip_bps=2.0, ts=now_ts)
+        execution_events = [event.__dict__ for event in raw_events]
+
+    decision = build_decision_artifact(
+        analysis=analysis,
+        plan=plan,
+        previous_position=previous_position,
+        execution_events=execution_events,
+        market_data_ready=bool(closes and last_price > 0),
+    )
 
     res = CycleResult(
         ts=now_ts,
         pair=args.pair,
         tf_min=args.tf_min,
         status="ok",
-        note=f"cycle: candles={len(candles)} last_price={last_price:.2f} action={action_note}",
+        note=f"cycle: candles={len(candles)} last_price={last_price:.2f} decision={decision['decision_status']} action={action_note}",
     )
 
     jpath = journal_path(_today(), strategy_id=strategy_id)
@@ -117,7 +137,11 @@ def main() -> None:
         jpath,
         {
             "type": "cycle",
+            "artifact_contract_version": ARTIFACT_CONTRACT_VERSION,
+            "provenance": provenance,
+            "decision": decision,
             "strategy_id": strategy_id,
+            "fingerprint": fingerprint,
             "ts": res.ts,
             "pair": res.pair,
             "tf_min": res.tf_min,
@@ -131,16 +155,32 @@ def main() -> None:
                 "position": paper.position.__dict__ if paper.position else None,
                 "last_price": paper.last_price,
             },
+            "analysis": (
+                None
+                if analysis is None
+                else {
+                    "regime_label": analysis.regime_label,
+                    "regime_note": analysis.regime_note,
+                    "setup_label": analysis.setup_label,
+                    "trend_signal": as_dict(analysis.trend_signal),
+                    "mean_reversion_signal": as_dict(analysis.mean_reversion_signal),
+                }
+            ),
             "signal": sig.__dict__ if sig else None,
             "plan": plan.__dict__ if plan else None,
+            "execution_events": execution_events,
             "candles_loaded": len(candles),
         },
     )
 
     # Snapshot for dashboard
     snapshot = {
+        "artifact_contract_version": ARTIFACT_CONTRACT_VERSION,
+        "provenance": provenance,
+        "decision": decision,
         "ts": now_ts,
         "strategy_id": strategy_id,
+        "fingerprint": fingerprint,
         "pair": args.pair,
         "tf_min": args.tf_min,
         "equity": paper.equity,
@@ -148,8 +188,20 @@ def main() -> None:
         "daily_pnl": paper.daily_pnl,
         "risk_budget": rb.__dict__,
         "candles_loaded": len(candles),
+        "analysis": (
+            None
+            if analysis is None
+            else {
+                "regime_label": analysis.regime_label,
+                "regime_note": analysis.regime_note,
+                "setup_label": analysis.setup_label,
+                "trend_signal": as_dict(analysis.trend_signal),
+                "mean_reversion_signal": as_dict(analysis.mean_reversion_signal),
+            }
+        ),
         "signal": sig.__dict__ if sig else None,
         "plan": plan.__dict__ if plan else None,
+        "execution_events": execution_events,
         "status": "idle" if paper.position is None else "in_position",
         "note": res.note,
     }
