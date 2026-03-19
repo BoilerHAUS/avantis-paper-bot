@@ -143,8 +143,15 @@ risk controls are explicit and should be treated as first-class change surfaces:
 - sizing bounds
 - confidence thresholds (`min_confidence_to_trade`)
 
-strategy behavior can be profile-driven (`strategy.profiles`), so aggressive mode can use
-higher deployment + lower confidence gates while conservative remains unchanged.
+strategy behavior is currently narrow by design:
+- only the regime-first `trend_continuation` lane is tradeable
+- `trend_up` entries are limited to `pullback_long` and `breakout_long`
+- `trend_down` entries are limited to `failed_bounce_short` and `breakdown_short`
+- range/transition windows stand down instead of opening a separate range lane
+- replay and live artifacts expose setup labels plus invalidation/exit reasons
+
+strategy behavior can still be profile-driven (`strategy.profiles`) for risk and classifier thresholds,
+while the lane taxonomy stays small and interpretable.
 
 `edge_filtered` is an additive paper experiment lane using a stricter confidence gate
 (`min_confidence_to_trade: 0.60`) to skip lower-conviction entries.

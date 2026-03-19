@@ -22,17 +22,20 @@ Each decision artifact MUST include an `effective_config` object with compact de
 - `signal.trend_weight`, `signal.trend_weight_in_regime`, `signal.mr_weight`
 - `signal.adx_threshold`, `signal.regime_confidence_floor`
 - `signal.tie_break_to_trend`, `signal.tie_break_min_confidence`
+- `signal.trend_lane_min_confidence`, `signal.continuation_lookback`
 
 This object is intentionally compact: enough for forensic review to explain the effective thresholds in force without embedding the entire raw config blob.
 
 ## Canonical decision fields
 Each decision artifact MUST include a `decision` object with:
 - `regime`: machine-comparable regime label such as `trend_up`, `trend_down`, `range`, `transition`, `unknown`
-- `setup_type`: machine-comparable setup label such as `trend_follow_long`, `trend_follow_short`, `regime_tie_break`, `no_trade`
+- `setup_type`: machine-comparable setup label such as `pullback_long`, `breakout_long`, `failed_bounce_short`, `breakdown_short`, `no_trade`
+- `strategy_lane`: machine-comparable lane label such as `trend_continuation`, `stand_down`, `unknown`
 - `decision_status`: canonical outcome for the cycle
 - `decision_reason`: canonical positive-path reason code when the bot acts or intentionally holds a live position
 - `block_reason`: canonical negative-path reason code when the bot skips or vetoes
 - `exit_reason`: canonical exit reason code when the bot closes, flips, or is forced out
+- `invalidation_reason`: deterministic lane invalidation code when present
 
 ## `decision_status`
 Allowed values in this slice:
@@ -48,8 +51,8 @@ Allowed values in this slice:
 ## Reason codes
 Current reason codes emitted in this slice:
 - `decision_reason`: `entry_signal`, `add_signal`, `reverse_signal`, `existing_position`
-- `block_reason`: `no_market_data`, `signal_flat`, `no_setup`, `confidence_below_min`, `invalid_stop`, `risk_gate`
-- `exit_reason`: `signal_flat`, `reverse_signal`, `position_exit`, `stop_loss`
+- `block_reason`: `no_market_data`, `signal_flat`, `no_setup`, `confidence_below_min`, `invalid_stop`, `risk_gate`, `transition_stand_down`, `confidence_collapse`, `regime_not_confirmed`, `trend_structure_lost`
+- `exit_reason`: `signal_flat`, `reverse_signal`, `position_exit`, `stop_loss`, `transition_stand_down`, `confidence_collapse`, `regime_not_confirmed`, `trend_structure_lost`
 
 ## Notes vs canonical fields
 Human-readable notes remain available for debugging:

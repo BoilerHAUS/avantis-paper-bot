@@ -62,6 +62,8 @@ def build_effective_config(*, effective_risk: Any, signal_cfg: Any) -> dict[str,
             "regime_confidence_floor": signal.get("regime_confidence_floor"),
             "tie_break_to_trend": signal.get("tie_break_to_trend"),
             "tie_break_min_confidence": signal.get("tie_break_min_confidence"),
+            "trend_lane_min_confidence": signal.get("trend_lane_min_confidence"),
+            "continuation_lookback": signal.get("continuation_lookback"),
         },
     }
 
@@ -78,8 +80,10 @@ def build_decision_artifact(
     regime = "unknown"
     regime_note = None
     setup_type = "no_trade"
+    strategy_lane = "unknown"
     signal_desired = "flat"
     signal_note = None
+    invalidation_reason = None
     plan_action = None
     plan_note = None
 
@@ -87,8 +91,10 @@ def build_decision_artifact(
         regime = analysis.regime_label
         regime_note = analysis.regime_note
         setup_type = analysis.setup_label
+        strategy_lane = analysis.strategy_lane
         signal_desired = analysis.signal.desired
         signal_note = analysis.signal.note
+        invalidation_reason = analysis.invalidation_reason
 
     if plan is not None:
         plan_action = plan.action
@@ -117,12 +123,12 @@ def build_decision_artifact(
         exit_reason = "reverse_signal"
     elif plan.action == "close":
         decision_status = "close"
-        exit_reason = _close_exit_reason(signal_desired)
+        exit_reason = invalidation_reason or _close_exit_reason(signal_desired)
     elif previous_position is not None:
         decision_status = "hold"
         decision_reason = "existing_position"
     elif signal_desired == "flat":
-        block_reason = _skip_reason(setup_type, signal_note)
+        block_reason = invalidation_reason or _skip_reason(setup_type, signal_note)
     elif setup_type == "no_trade":
         block_reason = "no_setup"
     else:
@@ -134,10 +140,12 @@ def build_decision_artifact(
         "artifact_contract_version": ARTIFACT_CONTRACT_VERSION,
         "regime": regime,
         "setup_type": setup_type,
+        "strategy_lane": strategy_lane,
         "decision_status": decision_status,
         "decision_reason": decision_reason,
         "block_reason": block_reason,
         "exit_reason": exit_reason,
+        "invalidation_reason": invalidation_reason,
         "signal_desired": signal_desired,
         "plan_action": plan_action,
         "status": decision_status,

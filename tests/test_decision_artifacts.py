@@ -18,10 +18,12 @@ def _analysis(
     *,
     desired: str = "long",
     regime: str = "trend_up",
-    setup: str = "trend_follow_long",
-    note: str = "weighted long",
+    setup: str = "breakout_long",
+    note: str = "trend_up breakout_long",
+    strategy_lane: str = "trend_continuation",
+    invalidation_reason: str | None = None,
 ) -> SignalAnalysis:
-    signal = Signal(desired=desired, confidence=0.8, strategy="combo", note=note)
+    signal = Signal(desired=desired, confidence=0.8, strategy="trend_continuation", note=note)
     return SignalAnalysis(
         signal=signal,
         trend_signal=Signal(desired=desired, confidence=0.8, strategy="trend", note="trend"),
@@ -51,6 +53,8 @@ def _analysis(
             },
         ),
         setup_label=setup,
+        strategy_lane=strategy_lane,
+        invalidation_reason=invalidation_reason,
     )
 
 
@@ -87,6 +91,8 @@ def test_effective_config_is_compact_and_stable() -> None:
             regime_confidence_floor=0.28,
             tie_break_to_trend=True,
             tie_break_min_confidence=0.55,
+            trend_lane_min_confidence=0.55,
+            continuation_lookback=5,
         ),
     )
 
@@ -102,10 +108,12 @@ def test_effective_config_is_compact_and_stable() -> None:
   },
   \"signal\": {
     \"adx_threshold\": 16.0,
+    \"continuation_lookback\": 5,
     \"mr_weight\": 0.8,
     \"regime_confidence_floor\": 0.28,
     \"tie_break_min_confidence\": 0.55,
     \"tie_break_to_trend\": true,
+    \"trend_lane_min_confidence\": 0.55,
     \"trend_weight\": 1.0,
     \"trend_weight_in_regime\": 1.8
   }
@@ -132,7 +140,14 @@ def test_decision_contract_serialization_is_stable() -> None:
             previous_position={"side": "long"},
         ),
         "close": build_decision_artifact(
-            analysis=_analysis(desired="flat", regime="transition", setup="no_trade", note="both flat"),
+            analysis=_analysis(
+                desired="flat",
+                regime="transition",
+                setup="no_trade",
+                note="transition stand_down",
+                strategy_lane="stand_down",
+                invalidation_reason="transition_stand_down",
+            ),
             plan=_plan("close"),
             previous_position={"side": "long"},
         ),
@@ -150,16 +165,18 @@ def test_decision_contract_serialization_is_stable() -> None:
     "block_reason": null,
     "decision_reason": null,
     "decision_status": "close",
-    "exit_reason": "signal_flat",
+    "exit_reason": "transition_stand_down",
+    "invalidation_reason": "transition_stand_down",
     "plan_action": "close",
     "plan_note": "combo conf=0.80",
-    "reason": "signal_flat",
+    "reason": "transition_stand_down",
     "regime": "transition",
     "regime_note": "adx=25.0 spread=0.0100 slope=0.0050",
     "setup_type": "no_trade",
     "signal_desired": "flat",
-    "signal_note": "both flat",
-    "status": "close"
+    "signal_note": "transition stand_down",
+    "status": "close",
+    "strategy_lane": "stand_down"
   },
   "forced_exit": {
     "artifact_contract_version": "decision_artifact.v1",
@@ -167,15 +184,17 @@ def test_decision_contract_serialization_is_stable() -> None:
     "decision_reason": null,
     "decision_status": "forced_exit",
     "exit_reason": "stop_loss",
+    "invalidation_reason": null,
     "plan_action": "hold",
     "plan_note": "combo conf=0.80",
     "reason": "stop_loss",
     "regime": "trend_up",
     "regime_note": "adx=25.0 spread=0.0100 slope=0.0050",
-    "setup_type": "trend_follow_long",
+    "setup_type": "breakout_long",
     "signal_desired": "long",
-    "signal_note": "weighted long",
-    "status": "forced_exit"
+    "signal_note": "trend_up breakout_long",
+    "status": "forced_exit",
+    "strategy_lane": "trend_continuation"
   },
   "hold": {
     "artifact_contract_version": "decision_artifact.v1",
@@ -183,15 +202,17 @@ def test_decision_contract_serialization_is_stable() -> None:
     "decision_reason": "existing_position",
     "decision_status": "hold",
     "exit_reason": null,
+    "invalidation_reason": null,
     "plan_action": "hold",
     "plan_note": "combo conf=0.80",
     "reason": "existing_position",
     "regime": "trend_up",
     "regime_note": "adx=25.0 spread=0.0100 slope=0.0050",
-    "setup_type": "trend_follow_long",
+    "setup_type": "breakout_long",
     "signal_desired": "long",
-    "signal_note": "weighted long",
-    "status": "hold"
+    "signal_note": "trend_up breakout_long",
+    "status": "hold",
+    "strategy_lane": "trend_continuation"
   },
   "skip": {
     "artifact_contract_version": "decision_artifact.v1",
@@ -199,6 +220,7 @@ def test_decision_contract_serialization_is_stable() -> None:
     "decision_reason": null,
     "decision_status": "skip",
     "exit_reason": null,
+    "invalidation_reason": null,
     "plan_action": null,
     "plan_note": null,
     "reason": "no_market_data",
@@ -207,7 +229,8 @@ def test_decision_contract_serialization_is_stable() -> None:
     "setup_type": "no_trade",
     "signal_desired": "flat",
     "signal_note": null,
-    "status": "skip"
+    "status": "skip",
+    "strategy_lane": "unknown"
   },
   "veto": {
     "artifact_contract_version": "decision_artifact.v1",
@@ -215,15 +238,17 @@ def test_decision_contract_serialization_is_stable() -> None:
     "decision_reason": null,
     "decision_status": "veto",
     "exit_reason": null,
+    "invalidation_reason": null,
     "plan_action": "hold",
     "plan_note": "skip: conf=0.55 below threshold=0.60 (combo)",
     "reason": "confidence_below_min",
     "regime": "trend_up",
     "regime_note": "adx=25.0 spread=0.0100 slope=0.0050",
-    "setup_type": "trend_follow_long",
+    "setup_type": "breakout_long",
     "signal_desired": "long",
-    "signal_note": "weighted long",
-    "status": "veto"
+    "signal_note": "trend_up breakout_long",
+    "status": "veto",
+    "strategy_lane": "trend_continuation"
   }
 }
 """
@@ -318,5 +343,7 @@ def test_run_cycle_writes_contract_to_journal_and_snapshot(monkeypatch, tmp_path
     assert journal_payload["effective_config"]["risk"]["min_confidence_to_trade"] == 0.6
     assert snapshot["artifact_contract_version"] == ARTIFACT_CONTRACT_VERSION
     assert snapshot["decision"]["decision_status"] == "hold"
-    assert snapshot["decision"]["setup_type"] == "trend_follow_long"
+    assert snapshot["decision"]["setup_type"] == "breakout_long"
+    assert snapshot["decision"]["strategy_lane"] == "trend_continuation"
+    assert snapshot["analysis"]["invalidation_reason"] is None
     assert snapshot["effective_config"]["signal"]["trend_weight_in_regime"] is not None
