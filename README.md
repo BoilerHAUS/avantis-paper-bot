@@ -30,6 +30,7 @@ all core decisions run without LLM dependency in the hot path.
 see:
 - `boilerclaw/LIVE_RUNBOOK.md`
 - `/home/boiler/.openclaw/workspace/LIVE_CHECKLIST.md` (ops companion checklist)
+- `docs/strategy/EXPERIMENTATION_FRAMEWORK_V1.md` (scientific experimentation doctrine)
 - `docs/README.md` (canonical docs index)
 
 ---
