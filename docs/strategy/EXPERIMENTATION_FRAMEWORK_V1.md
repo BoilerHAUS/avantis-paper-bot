@@ -199,6 +199,7 @@ Follow-on issues should then:
 - revise this framework when real usage reveals gaps
 
 ## related docs
+- `docs/strategy/EXPERIMENT_GOVERNANCE_POLICY_V1.md`
 - `docs/strategy/STRATEGY_CONTRACT_V1.md`
 - `docs/architecture.md`
 - `docs/agent/CHECKLISTS.md`
