@@ -20,6 +20,12 @@
 
 If risk changed, describe exactly what and why:
 
+## Roadmap linkage (required for substantive work)
+- Roadmap phase/item:
+- Linked issue(s):
+- This PR: [ ] completes item  [ ] advances item  [ ] partial only
+- If partial only, what remains / who must review manual status:
+
 ## Validation
 - Commands/tests run:
 - Evidence (logs/screenshots):

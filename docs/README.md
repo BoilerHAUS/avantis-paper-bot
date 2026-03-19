@@ -15,6 +15,8 @@ Provide one canonical entrypoint for repo documentation so contributors and oper
 | `README.md` | contributor/operator | shared | weekly | yes | repo overview, quickstart, baseline behavior |
 | `docs/architecture.md` | developer/operator | boilerclaw | biweekly | yes | trading/dataflow architecture and strategy logic |
 | `docs/REPO_UPDATE_PROCESS.md` | contributor | shared | weekly | yes | issue-first / PR-gated process contract |
+| `docs/roadmap/EXPERIMENTATION_ROADMAP_V1.json` | contributor/governance | boilermolt | weekly | yes | authored roadmap truth: phases, gates, and issue linkage |
+| `docs/roadmap/EXPERIMENTATION_ROADMAP_STATUS.md` | contributor/governance | boilermolt | weekly | generated | derived current roadmap/gate status from repo state |
 | `boilerclaw/LIVE_RUNBOOK.md` | operator | boilerclaw | weekly | yes | production/live runbook and deploy checks |
 | `docs/operations/RUNBOOK_PAPER_V1.md` | operator | boilermolt | weekly | yes | paper-mode start/verify/recover/rollback runbook |
 | `docs/strategy/STRATEGY_CONTRACT_V1.md` | developer/strategy reviewer | boilermolt | weekly | yes | conservative/aggressive profile contract + risk boundaries |
@@ -42,6 +44,7 @@ Provide one canonical entrypoint for repo documentation so contributors and oper
 
 ### I need to contribute code/docs
 - `docs/REPO_UPDATE_PROCESS.md`
+- `docs/roadmap/EXPERIMENTATION_ROADMAP_STATUS.md`
 - `.github/pull_request_template.md`
 
 ## known gaps (tracked)

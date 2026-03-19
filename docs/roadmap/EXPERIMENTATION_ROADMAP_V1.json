@@ -1,0 +1,85 @@
+{
+  "version": "v1.0.0",
+  "owner_role": "strategy_governance",
+  "objective": "Make project distance-to-readiness visible and derive roadmap progress from explicit repo state wherever possible.",
+  "status_values": [
+    "planned",
+    "in_progress",
+    "blocked",
+    "complete",
+    "superseded",
+    "manual_review_required"
+  ],
+  "authored_truth": {
+    "notes": [
+      "This file is the authored roadmap truth: phases, gate definitions, milestone semantics, and issue linkage.",
+      "Generated roadmap state must be derived from linked issue/PR metadata plus explicit PR linkage declarations where possible.",
+      "Automation should prefer under-automation to wrong automation."
+    ]
+  },
+  "gates": {
+    "foundation_complete": {
+      "description": "Evidence substrate is trustworthy enough to support disciplined experimentation.",
+      "required_issue_ids": [35, 36, 37, 42, 46]
+    },
+    "experimentation_ready": {
+      "description": "The repo can run and review meaningful candidate-vs-baseline experiments with trustable evidence.",
+      "required_issue_ids": [35, 36, 37, 38, 39, 40, 42, 46],
+      "operational_definition": [
+        "fixed-window replay is trustworthy",
+        "decision/regime/setup attribution is inspectable",
+        "candidate and baseline can be compared on fixed windows",
+        "governance/evidence rules are explicit enough to review a candidate without vibes",
+        "at least one real strategy lane can be tested against a baseline under those rules"
+      ]
+    },
+    "research_surface_ready": {
+      "description": "Humans can navigate evidence without artifact spelunking.",
+      "required_issue_ids": [47, 48, 49, 50]
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-0",
+      "name": "trustable foundations",
+      "gate": "foundation_complete",
+      "items": [
+        {"id": "replay-foundation", "title": "Deterministic replay evidence", "issue": 35, "category": "foundation"},
+        {"id": "decision-contract", "title": "Decision artifact contract", "issue": 36, "category": "foundation"},
+        {"id": "regime-classifier", "title": "Explicit market regime classifier", "issue": 37, "category": "foundation"},
+        {"id": "governance-policy", "title": "Experiment governance policy", "issue": 42, "category": "governance"},
+        {"id": "replay-integrity", "title": "Replay input-window integrity validation", "issue": 46, "category": "foundation"}
+      ]
+    },
+    {
+      "id": "phase-1",
+      "name": "first experimentation-ready loop",
+      "gate": "experimentation_ready",
+      "items": [
+        {"id": "trend-lane", "title": "Directional trend lane", "issue": 38, "category": "strategy-lane"},
+        {"id": "range-lane", "title": "Range / mean reversion lane", "issue": 39, "category": "strategy-lane"},
+        {"id": "experiment-registry", "title": "Experiment registry", "issue": 40, "category": "registry"}
+      ]
+    },
+    {
+      "id": "phase-2",
+      "name": "research operating surface",
+      "gate": "research_surface_ready",
+      "items": [
+        {"id": "run-index", "title": "Experiment run index", "issue": 47, "category": "ux"},
+        {"id": "run-detail", "title": "Run detail / decision trace", "issue": 48, "category": "ux"},
+        {"id": "comparison-workflow", "title": "Baseline vs candidate comparison", "issue": 49, "category": "ux"},
+        {"id": "promotion-surface", "title": "Promotion/rejection evidence surface", "issue": 50, "category": "ux"}
+      ]
+    },
+    {
+      "id": "phase-3",
+      "name": "refinement and scaling",
+      "items": [
+        {"id": "experimentation-console-umbrella", "title": "Experimentation-console umbrella framing", "issue": 41, "category": "ux-umbrella"},
+        {"id": "readme-refresh", "title": "README remake", "issue": 44, "category": "docs"},
+        {"id": "roadmap-automation", "title": "Roadmap + progress automation", "issue": 54, "category": "meta"}
+      ]
+    }
+  ]
+}
