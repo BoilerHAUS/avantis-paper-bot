@@ -175,6 +175,7 @@ def main() -> None:
                 }
             ),
             "signal": sig.__dict__ if sig else None,
+            "regime_classifier": (as_dict(analysis.regime) if analysis else None),
             "plan": plan.__dict__ if plan else None,
             "execution_events": execution_events,
             "candles_loaded": len(candles),
@@ -209,6 +210,7 @@ def main() -> None:
             }
         ),
         "signal": sig.__dict__ if sig else None,
+        "regime_classifier": (as_dict(analysis.regime) if analysis else None),
         "plan": plan.__dict__ if plan else None,
         "execution_events": execution_events,
         "status": "idle" if paper.position is None else "in_position",

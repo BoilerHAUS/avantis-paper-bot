@@ -47,9 +47,17 @@ Profile tuning MUST NOT bypass these invariants:
 ## required journaling fields
 Each cycle/trade artifact MUST include:
 - `strategy_id`
+- `regime_classifier`: schema_version, label, confidence, probabilities, stand_down, uncertainty_score
 - signal: desired/confidence/strategy/note
 - plan: action, leverage, risk_usd, stop/take fields
 - state: equity, daily_pnl, position, last_price
+
+## regime classifier contract
+- classifier schema version: `regime_classifier.v1`
+- canonical labels: `trend_up`, `trend_down`, `range`, `transition`
+- `transition` MUST be preserved as a first-class outcome
+- downstream consumers MAY stand down when `regime_classifier.stand_down == true`
+- strategy changes in this lane MUST NOT silently introduce alternate regime labels
 
 ## versioning + changelog
 ### profile changelog

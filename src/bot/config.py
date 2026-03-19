@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -133,6 +134,8 @@ def load_config() -> BotConfig:
 
 
 def as_dict(obj: Any) -> Any:
+    if isinstance(obj, Enum):
+        return obj.value
     if isinstance(obj, dict):
         return {k: as_dict(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple, set)):

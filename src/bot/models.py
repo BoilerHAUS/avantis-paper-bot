@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Literal, Optional
 
 Side = Literal["long", "short"]
 Desired = Literal["long", "short", "flat"]
+
+
+class MarketRegime(str, Enum):
+    TREND_UP = "trend_up"
+    TREND_DOWN = "trend_down"
+    RANGE = "range"
+    TRANSITION = "transition"
 
 
 @dataclass
@@ -13,6 +21,18 @@ class Signal:
     confidence: float
     strategy: str
     note: str = ""
+
+
+@dataclass
+class RegimeClassifierOutput:
+    schema_version: str
+    label: MarketRegime
+    confidence: float
+    probabilities: dict[str, float]
+    stand_down: bool
+    uncertainty_score: float
+    note: str
+    features: dict[str, float | str | bool | None]
 
 
 @dataclass

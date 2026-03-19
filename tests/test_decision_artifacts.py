@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from bot.artifacts import ARTIFACT_CONTRACT_VERSION, build_decision_artifact, build_effective_config
-from bot.models import OrderPlan, Signal
+from bot.models import MarketRegime, OrderPlan, RegimeClassifierOutput, Signal
 from bot.run_cycle import main as run_cycle_main
 from bot.storage import candles_path, journal_path, snapshot_path, state_path
 from bot.strategies import SignalAnalysis
@@ -26,8 +26,30 @@ def _analysis(
         signal=signal,
         trend_signal=Signal(desired=desired, confidence=0.8, strategy="trend", note="trend"),
         mean_reversion_signal=Signal(desired="flat", confidence=0.4, strategy="mean_reversion", note="neutral"),
-        regime_label=regime,
-        regime_note="adx=25.0 spread=0.0100 slope=0.0050",
+        regime=RegimeClassifierOutput(
+            schema_version="regime_classifier.v1",
+            label=MarketRegime(regime),
+            confidence=0.8,
+            probabilities={
+                "trend_up": 0.8 if regime == "trend_up" else 0.05,
+                "trend_down": 0.8 if regime == "trend_down" else 0.05,
+                "range": 0.8 if regime == "range" else 0.05,
+                "transition": 0.8 if regime == "transition" else 0.05,
+            },
+            stand_down=(regime == "transition"),
+            uncertainty_score=0.2 if regime != "transition" else 0.8,
+            note="adx=25.0 spread=0.0100 slope=0.0050",
+            features={
+                "adx": 25.0,
+                "trend_strength": 0.8,
+                "trend_ready": True,
+                "trend_desired": desired,
+                "trend_confidence": 0.8,
+                "mean_reversion_desired": "flat",
+                "mean_reversion_confidence": 0.4,
+                "conflict_score": 0.1,
+            },
+        ),
         setup_label=setup,
     )
 

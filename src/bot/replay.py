@@ -233,6 +233,7 @@ def replay_fixed_window(
                     "tf_sec": int(candle.get("tf_sec", tf_min * 60)),
                 },
                 "analysis": {
+                    "regime_classifier": as_dict(analysis.regime),
                     "regime_label": analysis.regime_label,
                     "regime_note": analysis.regime_note,
                     "setup_label": analysis.setup_label,
@@ -293,6 +294,9 @@ def replay_fixed_window(
             "initial_equity": initial_equity,
         },
         "effective_config": effective_config,
+        "schemas": {
+            "regime_classifier": "regime_classifier.v1",
+        },
         "artifacts": {
             "summary": "summary.json",
             "manifest": "manifest.json",

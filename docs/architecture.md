@@ -19,6 +19,7 @@ This repo is a **paper-first** scaffold for trading **Avantis perps** (starting 
    - Loads last N candles (default 200)
    - Loads `PaperState` from `data/state/current.json` (equity/position/daily_pnl)
    - Computes a bounded `RiskBudget`
+   - Computes one deterministic `regime_classifier` object
    - Computes a deterministic `Signal` (long/short/flat)
    - Converts `Signal → OrderPlan` (ATR stops + size + leverage cap)
    - Executes the plan in the paper engine (sim fills + slippage)
@@ -36,7 +37,7 @@ This repo is a **paper-first** scaffold for trading **Avantis perps** (starting 
      - `cycles.jsonl`
      - `trades.jsonl`
      - `equity.jsonl`
-   - Artifact rows include regime labels, setup labels, skips/vetoes, execution events, and strategy/config fingerprints
+  - Artifact rows include explicit regime classifier output, setup labels, skips/vetoes, execution events, and strategy/config fingerprints
 
 ## What decides long vs short?
 
@@ -57,6 +58,16 @@ This repo is a **paper-first** scaffold for trading **Avantis perps** (starting 
 Resolver:
 - if both agree (non-flat), take that direction
 - else prefer the one with higher confidence
+
+### Regime classifier (`src/bot/strategies.py`)
+`classify_regime(candles)` produces one deterministic object with schema version `regime_classifier.v1`:
+
+- canonical labels: `trend_up`, `trend_down`, `range`, `transition`
+- bounded `confidence` plus normalized class probabilities
+- `stand_down` for uncertain/transition windows
+- interpretable features (`adx`, spread, slope, trend strength, conflict score)
+
+`transition` is the normal output for regime boundaries, insufficient structure, and noisy conflict. It is not treated as an error.
 
 ### Risk sizing (`src/bot/risk.py`)
 `plan_from_signal(...)` converts the signal into an order plan with hard bounds:
@@ -88,6 +99,7 @@ The journal is JSONL with one event per cycle:
 - `type`: always `"cycle"` currently
 - `ts`: unix timestamp seconds
 - `signal`: `{desired,long|short|flat, confidence, strategy, note}`
+- `regime_classifier`: `{schema_version, label, confidence, probabilities, stand_down, uncertainty_score, note, features}`
 - `plan`: `{action, side, target_notional_usd, collateral_usd, leverage, stop_loss, take_profit, risk_usd, note}`
 - `state`: `{equity, daily_pnl, position, last_price}`
 
@@ -106,6 +118,7 @@ The replay harness is the deterministic evidence path for strategy evaluation on
   - symbol/timeframe/window
   - strategy id + strategy/config fingerprint
   - effective risk/signal config snapshot
+  - classifier schema version
 - `summary.json`
   - ending equity / net pnl / return
   - max drawdown
@@ -113,7 +126,7 @@ The replay harness is the deterministic evidence path for strategy evaluation on
   - regime and setup coverage counts
 - `cycles.jsonl`
   - one deterministic decision row per candle in the scored window
-  - includes signal, plan, regime/setup labels, risk budget, execution events, and resulting paper state
+  - includes signal, plan, explicit `regime_classifier`, regime/setup labels, risk budget, execution events, and resulting paper state
 - `trades.jsonl`
   - flattened execution events (`open`, `close`, `flip_*`, `stop_loss`, `take_profit_partial`, `scale`)
 - `equity.jsonl`
