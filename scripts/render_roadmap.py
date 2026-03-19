@@ -67,7 +67,7 @@ def render() -> str:
     lines.append("# experimentation roadmap status")
     lines.append("")
     lines.append("## metadata")
-    lines.append(f"- source roadmap: `docs/roadmap/EXPERIMENTATION_ROADMAP_V1.json`")
+    lines.append("- source roadmap: `docs/roadmap/EXPERIMENTATION_ROADMAP_V1.json`")
     lines.append("- status type: generated")
     lines.append("- generation rule: issue-linked roadmap items derive state from GitHub issue metadata where possible")
     lines.append("- ambiguity policy: prefer manual follow-up over silent inference")
@@ -120,7 +120,7 @@ def render() -> str:
             issue = issues[item["issue"]]
             status = item_status(issue)
             labels = {label["name"] for label in issue.get("labels", [])}
-            priority = next((l for l in sorted(labels) if l.startswith("priority:")), "-")
+            priority = next((label for label in sorted(labels) if label.startswith("priority:")), "-")
             lines.append(f"| {item['title']} | #{item['issue']} | `{status}` | `{priority}` |")
         lines.append("")
 
