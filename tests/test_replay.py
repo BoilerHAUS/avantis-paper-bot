@@ -87,8 +87,8 @@ def test_replay_outputs_are_deterministic(monkeypatch, tmp_path: Path) -> None:
             second.output_dir / name
         ).read_text(encoding="utf-8")
 
-    assert first.summary["trade_count"] == 4
-    assert first.summary["decision_counts"] == {"close": 1, "forced_exit": 2, "hold": 14, "open": 4, "skip": 10}
+    assert first.summary["trade_count"] == 3
+    assert first.summary["decision_counts"] == {"forced_exit": 2, "hold": 14, "open": 3, "skip": 11, "veto": 1}
     assert first.summary["provenance"]["strategy_id"] == "aggressive"
     assert first.summary["effective_config"]["risk"]["min_confidence_to_trade"] == 0.6
     assert any(row["decision"]["decision_status"] == "forced_exit" for row in first.cycles)

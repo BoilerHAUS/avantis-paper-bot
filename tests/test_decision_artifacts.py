@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from bot.artifacts import ARTIFACT_CONTRACT_VERSION, build_decision_artifact, build_effective_config
-from bot.models import OrderPlan, Signal
+from bot.models import MarketRegime, OrderPlan, RegimeClassifierOutput, Signal
 from bot.run_cycle import main as run_cycle_main
 from bot.storage import candles_path, journal_path, snapshot_path, state_path
 from bot.strategies import SignalAnalysis
