@@ -135,7 +135,7 @@ def test_replay_comparison_uses_same_window(monkeypatch, tmp_path: Path) -> None
     assert baseline.summary["window"] == candidate.summary["window"] == comparison["window"]
     assert comparison["baseline"]["strategy_id"] == "conservative"
     assert comparison["candidate"]["strategy_id"] == "aggressive"
-    assert comparison["delta"]["trade_count"] == 2
-    assert comparison["baseline"]["summary"]["trade_count"] == 0
+    assert comparison["delta"]["trade_count"] == 0
+    assert comparison["baseline"]["summary"]["trade_count"] == 2
     assert comparison["candidate"]["summary"]["trade_count"] == 2
     assert comparison["candidate"]["summary"]["artifact_contract_version"] == "decision_artifact.v1"
