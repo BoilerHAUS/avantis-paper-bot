@@ -171,6 +171,21 @@ Every governance review MUST leave one auditable decision record containing:
 - unresolved risks / missing evidence
 - next action
 
+## decision record location and retention
+Decision-record discoverability is part of governance compliance, not optional documentation hygiene.
+
+For this repo, the canonical decision-record location in this first slice is:
+1. the linked issue thread for the experiment, as the primary human-readable governance ledger
+2. the linked PR thread, when the decision is tied to a concrete implementation change
+
+Minimum retention rules:
+- every formal review outcome MUST be posted in the issue thread that owns the experiment
+- if the decision is made during PR review, the issue thread MUST still contain a durable summary and link back to the PR
+- the issue comment that carries the decision MUST include enough information to locate the evidence bundle without guesswork
+- governance compliance is not satisfied by a decision that exists only in an ephemeral chat, private note, or unlinked review thread
+
+Until a dedicated registry/ledger exists, the issue thread is the source of truth for historical decision discovery.
+
 ## exceptions and overrides
 Exceptions are allowed only when all of the following are present:
 - explicit label: `exception`
