@@ -95,6 +95,8 @@ A "trade event" is inferred when:
 - `plan.action != "hold"` OR
 - `state.position` changes vs previous cycle
 
+Decision artifact fields are versioned separately in [docs/ARTIFACT_CONTRACT_V1.md](ARTIFACT_CONTRACT_V1.md).
+
 ## Replay artifact contract (v0)
 
 The replay harness is the deterministic evidence path for strategy evaluation on a fixed candle window.
