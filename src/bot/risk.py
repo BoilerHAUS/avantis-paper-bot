@@ -162,7 +162,7 @@ def plan_from_signal(
     if "mean_reversion" in strat:
         tier_cap = min(tier_cap, 3.0)
 
-    max_lev_allowed = min(cfg.max_leverage, tier_cap if tier_cap > 0 else cfg.max_leverage)
+    max_lev_allowed = 0.0 if tier_cap <= 0 else min(cfg.max_leverage, tier_cap)
 
     leverage = min(max_lev_allowed, max(1.0, target_notional / cfg.min_collateral_usd))
     # If tiering says "skip", force a hold.

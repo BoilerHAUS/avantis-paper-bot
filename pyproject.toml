@@ -18,6 +18,7 @@ dependencies = [
 [project.scripts]
 apb-feed = "bot.feed_listener:main"
 apb-cycle = "bot.run_cycle:main"
+apb-replay = "bot.replay:main"
 
 [project.optional-dependencies]
 dev = [

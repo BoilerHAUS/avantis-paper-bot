@@ -33,9 +33,37 @@ def json_dumps(obj: Any) -> str:
     )
 
 
+def stable_json_dumps(obj: Any) -> str:
+    return json.dumps(
+        obj,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+        default=_json_default,
+    ) + "\n"
+
+
+def stable_jsonl_dumps(obj: Any) -> str:
+    return json.dumps(
+        obj,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        default=_json_default,
+    ) + "\n"
+
+
 def jsonl_append(path: Path, obj: Any) -> None:
     ensure_parent(path)
     path.open("a", encoding="utf-8").write(json_dumps(obj) + "\n")
+
+
+def jsonl_write(path: Path, rows: list[Any], *, stable: bool = False) -> None:
+    ensure_parent(path)
+    dumps = stable_jsonl_dumps if stable else lambda value: json_dumps(value) + "\n"
+    with path.open("w", encoding="utf-8") as fh:
+        for row in rows:
+            fh.write(dumps(row))
 
 
 def read_json(path: Path, default: Any) -> Any:
@@ -48,3 +76,8 @@ def read_json(path: Path, default: Any) -> Any:
 def write_json(path: Path, obj: Any) -> None:
     ensure_parent(path)
     path.write_text(json.dumps(obj, indent=2, ensure_ascii=False, default=_json_default) + "\n", encoding="utf-8")
+
+
+def write_json_stable(path: Path, obj: Any) -> None:
+    ensure_parent(path)
+    path.write_text(stable_json_dumps(obj), encoding="utf-8")
