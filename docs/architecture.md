@@ -27,6 +27,17 @@ This repo is a **paper-first** scaffold for trading **Avantis perps** (starting 
    - Writes dashboard snapshot:
      - `data/state/snapshot.json`
 
+3) `bot.replay` (offline fixed-window evaluation)
+   - Loads stored candles from JSONL only
+   - Replays one strategy, or two strategies on the same frozen window, without feed or live execution dependencies
+   - Writes deterministic artifacts under `data/replays/...`:
+     - `manifest.json`
+     - `summary.json`
+     - `cycles.jsonl`
+     - `trades.jsonl`
+     - `equity.jsonl`
+   - Artifact rows include regime labels, setup labels, skips/vetoes, execution events, and strategy/config fingerprints
+
 ## What decides long vs short?
 
 ### Signals (`src/bot/strategies.py`)
@@ -83,6 +94,33 @@ The journal is JSONL with one event per cycle:
 A "trade event" is inferred when:
 - `plan.action != "hold"` OR
 - `state.position` changes vs previous cycle
+
+## Replay artifact contract (v0)
+
+The replay harness is the deterministic evidence path for strategy evaluation on a fixed candle window.
+
+- `manifest.json`
+  - replay contract version
+  - symbol/timeframe/window
+  - strategy id + strategy/config fingerprint
+  - effective risk/signal config snapshot
+- `summary.json`
+  - ending equity / net pnl / return
+  - max drawdown
+  - decision counts (`trade`, `skip`, `veto`)
+  - regime and setup coverage counts
+- `cycles.jsonl`
+  - one deterministic decision row per candle in the scored window
+  - includes signal, plan, regime/setup labels, risk budget, execution events, and resulting paper state
+- `trades.jsonl`
+  - flattened execution events (`open`, `close`, `flip_*`, `stop_loss`, `take_profit_partial`, `scale`)
+- `equity.jsonl`
+  - replay equity curve aligned to the fixed candle window
+
+Boundary for this first slice:
+- one symbol/timeframe per replay
+- one candle file per replay
+- same-window two-strategy comparison is supported via paired single-strategy bundles plus one comparison JSON
 
 ## AI / Agent involvement
 

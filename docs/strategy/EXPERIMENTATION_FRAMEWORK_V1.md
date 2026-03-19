@@ -193,8 +193,8 @@ If someone reads the repo later, they should be able to answer: what was tested,
 Issue `#34` is satisfied when this framework exists in-repo as the initial operating document and future strategy work can point back to it.
 
 Follow-on issues should then:
-- implement replay/evidence tooling
-- implement deterministic review artifacts
+- expand replay/evidence tooling beyond the fixed-window deterministic harness
+- refine deterministic review artifacts/comparison bundles
 - refine promotion policy and governance details
 - revise this framework when real usage reveals gaps
 

@@ -86,6 +86,28 @@ python -m bot.run_cycle --pair "ETH/USD" --tf-min 15 --strategy-id super_aggress
 python -m bot.run_cycle --pair "ETH/USD" --tf-min 15 --strategy-id edge_filtered
 ```
 
+### 4) run a deterministic fixed-window replay
+
+```bash
+python3 -m bot.replay \
+  --pair "ETH/USD" \
+  --tf-min 15 \
+  --strategy-id conservative \
+  --compare-strategy-id aggressive \
+  --candles-file data/candles/ETH-USD-15m.jsonl \
+  --start-ts 1700000000 \
+  --end-ts 1700863200
+```
+
+artifacts are written under `data/replays/<pair>-<tf>m/<start>-<end>/...` with stable names:
+- `manifest.json`
+- `summary.json`
+- `cycles.jsonl`
+- `trades.jsonl`
+- `equity.jsonl`
+
+the replay path uses stored candles only, records skips/vetoes plus regime/setup labels, and avoids volatile timestamps in diff-critical outputs.
+
 ---
 
 ## docker deployment

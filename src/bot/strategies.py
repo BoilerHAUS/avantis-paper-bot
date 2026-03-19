@@ -38,6 +38,16 @@ class StrategyConfig:
     regime_confidence_floor: float = 0.0
 
 
+@dataclass
+class SignalAnalysis:
+    signal: Signal
+    trend_signal: Signal
+    mean_reversion_signal: Signal
+    regime_label: str
+    regime_note: str
+    setup_label: str
+
+
 def trend_signal(closes: list[float], cfg: StrategyConfig) -> Signal:
     f = sma(closes, cfg.trend_fast)
     s = sma(closes, cfg.trend_slow)
@@ -96,24 +106,48 @@ def _trend_regime(closes: list[float], highs: list[float], lows: list[float], cf
     return ok, f"adx={a:.1f} spread={spread:.4f} slope={slope:.4f}"
 
 
-def choose_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Signal:
+def analyze_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> SignalAnalysis:
     cfg = cfg or StrategyConfig()
     closes = [float(c["c"]) for c in candles if "c" in c]
     highs = [float(c["h"]) for c in candles if "h" in c]
     lows = [float(c["l"]) for c in candles if "l" in c]
 
     if not closes:
-        return Signal(desired="flat", confidence=0.0, strategy="combo", note="no candles")
+        empty = Signal(desired="flat", confidence=0.0, strategy="combo", note="no candles")
+        return SignalAnalysis(
+            signal=empty,
+            trend_signal=Signal(desired="flat", confidence=0.0, strategy="trend", note="no candles"),
+            mean_reversion_signal=Signal(
+                desired="flat",
+                confidence=0.0,
+                strategy="mean_reversion",
+                note="no candles",
+            ),
+            regime_label="unknown",
+            regime_note="no candles",
+            setup_label="no_trade",
+        )
 
     t = trend_signal(closes, cfg)
     m = mean_reversion_signal(closes, cfg)
     regime_on, regime_note = _trend_regime(closes, highs, lows, cfg)
+    if regime_on and t.desired == "long":
+        regime_label = "trend_up"
+    elif regime_on and t.desired == "short":
+        regime_label = "trend_down"
+    elif t.note.startswith("insufficient") or m.note.startswith("insufficient"):
+        regime_label = "unknown"
+    elif m.desired in {"long", "short"}:
+        regime_label = "range"
+    else:
+        regime_label = "transition"
 
     tw = cfg.trend_weight_in_regime if regime_on else cfg.trend_weight
     mw = cfg.mr_weight
 
     long_score = 0.0
     short_score = 0.0
+    setup_label = "no_trade"
 
     if t.desired == "long":
         long_score += t.confidence * tw
@@ -126,23 +160,84 @@ def choose_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Sig
         short_score += m.confidence * mw
 
     if long_score <= 0 and short_score <= 0:
-        return Signal(desired="flat", confidence=0.35, strategy="combo", note=f"both flat | {regime_note}")
+        signal = Signal(desired="flat", confidence=0.35, strategy="combo", note=f"both flat | {regime_note}")
+        return SignalAnalysis(
+            signal=signal,
+            trend_signal=t,
+            mean_reversion_signal=m,
+            regime_label=regime_label,
+            regime_note=regime_note,
+            setup_label=setup_label,
+        )
 
     if long_score > short_score + 0.05:
         conf = min(1.0, long_score / (tw + mw))
         if regime_on and cfg.regime_confidence_floor > 0:
             conf = max(conf, cfg.regime_confidence_floor)
-        return Signal(desired="long", confidence=conf, strategy="combo", note=f"weighted long ({regime_note})")
+        if t.desired == "long" and m.desired == "long":
+            setup_label = "trend_plus_mean_reversion_long"
+        elif t.desired == "long":
+            setup_label = "trend_follow_long"
+        elif m.desired == "long":
+            setup_label = "mean_reversion_long"
+        signal = Signal(desired="long", confidence=conf, strategy="combo", note=f"weighted long ({regime_note})")
+        return SignalAnalysis(
+            signal=signal,
+            trend_signal=t,
+            mean_reversion_signal=m,
+            regime_label=regime_label,
+            regime_note=regime_note,
+            setup_label=setup_label,
+        )
 
     if short_score > long_score + 0.05:
         conf = min(1.0, short_score / (tw + mw))
         if regime_on and cfg.regime_confidence_floor > 0:
             conf = max(conf, cfg.regime_confidence_floor)
-        return Signal(desired="short", confidence=conf, strategy="combo", note=f"weighted short ({regime_note})")
+        if t.desired == "short" and m.desired == "short":
+            setup_label = "trend_plus_mean_reversion_short"
+        elif t.desired == "short":
+            setup_label = "trend_follow_short"
+        elif m.desired == "short":
+            setup_label = "mean_reversion_short"
+        signal = Signal(desired="short", confidence=conf, strategy="combo", note=f"weighted short ({regime_note})")
+        return SignalAnalysis(
+            signal=signal,
+            trend_signal=t,
+            mean_reversion_signal=m,
+            regime_label=regime_label,
+            regime_note=regime_note,
+            setup_label=setup_label,
+        )
 
     # tie/noisy area
     if regime_on and cfg.tie_break_to_trend and t.desired in {"long", "short"} and t.confidence >= cfg.tie_break_min_confidence:
         conf = max(t.confidence, cfg.regime_confidence_floor)
-        return Signal(desired=t.desired, confidence=min(1.0, conf), strategy="combo", note=f"regime tie-break via trend ({regime_note})")
+        signal = Signal(
+            desired=t.desired,
+            confidence=min(1.0, conf),
+            strategy="combo",
+            note=f"regime tie-break via trend ({regime_note})",
+        )
+        return SignalAnalysis(
+            signal=signal,
+            trend_signal=t,
+            mean_reversion_signal=m,
+            regime_label=regime_label,
+            regime_note=regime_note,
+            setup_label="regime_tie_break",
+        )
 
-    return Signal(desired="flat", confidence=0.4, strategy="combo", note=f"tie/noise ({regime_note})")
+    signal = Signal(desired="flat", confidence=0.4, strategy="combo", note=f"tie/noise ({regime_note})")
+    return SignalAnalysis(
+        signal=signal,
+        trend_signal=t,
+        mean_reversion_signal=m,
+        regime_label=regime_label,
+        regime_note=regime_note,
+        setup_label=setup_label,
+    )
+
+
+def choose_signal(candles: list[dict], cfg: StrategyConfig | None = None) -> Signal:
+    return analyze_signal(candles, cfg).signal

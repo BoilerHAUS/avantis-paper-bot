@@ -8,7 +8,21 @@ Adds basic in-position trade management:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from .models import OrderPlan, PaperState, Position
+
+
+@dataclass
+class ExecutionEvent:
+    ts: int
+    kind: str
+    side: str
+    fill_price: float
+    notional_usd: float
+    pnl_usd: float
+    equity_after: float
+    note: str = ""
 
 
 def apply_slippage(price: float, slip_bps: float, side: str) -> float:
@@ -25,7 +39,15 @@ def _realize_pnl(pos: Position, fill_price: float, close_notional: float) -> flo
     return close_notional * (pos.avg_price / fill_price - 1.0)
 
 
-def open_position(state: PaperState, plan: OrderPlan, fill_price: float, ts: int) -> PaperState:
+def open_position(
+    state: PaperState,
+    plan: OrderPlan,
+    fill_price: float,
+    ts: int,
+    *,
+    events: list[ExecutionEvent] | None = None,
+    kind: str = "open",
+) -> PaperState:
     trail_distance = abs(fill_price - plan.stop_loss) if plan.stop_loss is not None else None
     pos = Position(
         side=plan.side or "long",
@@ -42,10 +64,32 @@ def open_position(state: PaperState, plan: OrderPlan, fill_price: float, ts: int
         trail_distance=trail_distance,
     )
     state.position = pos
+    if events is not None:
+        events.append(
+            ExecutionEvent(
+                ts=ts,
+                kind=kind,
+                side=pos.side,
+                fill_price=fill_price,
+                notional_usd=plan.target_notional_usd,
+                pnl_usd=0.0,
+                equity_after=state.equity,
+                note=plan.note,
+            )
+        )
     return state
 
 
-def close_position(state: PaperState, fill_price: float, close_notional: float | None = None) -> PaperState:
+def close_position(
+    state: PaperState,
+    fill_price: float,
+    close_notional: float | None = None,
+    *,
+    ts: int | None = None,
+    events: list[ExecutionEvent] | None = None,
+    kind: str = "close",
+    note: str = "",
+) -> PaperState:
     pos = state.position
     if not pos:
         return state
@@ -54,6 +98,7 @@ def close_position(state: PaperState, fill_price: float, close_notional: float |
     pnl = _realize_pnl(pos, fill_price, amount)
     state.equity += pnl
     state.daily_pnl += pnl
+    side = pos.side
 
     pos.notional_usd -= amount
     if pos.notional_usd <= 1e-9:
@@ -63,10 +108,30 @@ def close_position(state: PaperState, fill_price: float, close_notional: float |
         if pos.leverage > 0:
             pos.collateral_usd = pos.notional_usd / pos.leverage
         state.position = pos
+    if events is not None and ts is not None:
+        events.append(
+            ExecutionEvent(
+                ts=ts,
+                kind=kind,
+                side=side,
+                fill_price=fill_price,
+                notional_usd=amount,
+                pnl_usd=pnl,
+                equity_after=state.equity,
+                note=note,
+            )
+        )
     return state
 
 
-def scale_position(state: PaperState, plan: OrderPlan, fill_price: float) -> PaperState:
+def scale_position(
+    state: PaperState,
+    plan: OrderPlan,
+    fill_price: float,
+    *,
+    ts: int | None = None,
+    events: list[ExecutionEvent] | None = None,
+) -> PaperState:
     pos = state.position
     if not pos:
         return state
@@ -85,10 +150,30 @@ def scale_position(state: PaperState, plan: OrderPlan, fill_price: float) -> Pap
     pos.take_profit = plan.take_profit
     if pos.initial_notional_usd is None:
         pos.initial_notional_usd = target
+    if events is not None and ts is not None:
+        events.append(
+            ExecutionEvent(
+                ts=ts,
+                kind="scale",
+                side=pos.side,
+                fill_price=fill_price,
+                notional_usd=add,
+                pnl_usd=0.0,
+                equity_after=state.equity,
+                note=plan.note,
+            )
+        )
     return state
 
 
-def _manage_position(state: PaperState, last_price: float, slip_bps: float) -> PaperState:
+def _manage_position(
+    state: PaperState,
+    last_price: float,
+    slip_bps: float,
+    *,
+    ts: int,
+    events: list[ExecutionEvent] | None = None,
+) -> PaperState:
     pos = state.position
     if not pos:
         return state
@@ -97,7 +182,7 @@ def _manage_position(state: PaperState, last_price: float, slip_bps: float) -> P
     if pos.stop_loss is not None:
         if (pos.side == "long" and last_price <= pos.stop_loss) or (pos.side == "short" and last_price >= pos.stop_loss):
             fill = apply_slippage(last_price, slip_bps, side=pos.side)
-            return close_position(state, fill)
+            return close_position(state, fill, ts=ts, events=events, kind="stop_loss", note="hard stop")
 
     # 2) one-time partial at TP (50%)
     if not pos.partial_taken and pos.take_profit is not None:
@@ -106,7 +191,15 @@ def _manage_position(state: PaperState, last_price: float, slip_bps: float) -> P
             fill = apply_slippage(last_price, slip_bps, side=pos.side)
             close_amt = (pos.initial_notional_usd or pos.notional_usd) * 0.5
             close_amt = min(close_amt, pos.notional_usd)
-            state = close_position(state, fill, close_notional=close_amt)
+            state = close_position(
+                state,
+                fill,
+                close_notional=close_amt,
+                ts=ts,
+                events=events,
+                kind="take_profit_partial",
+                note="partial take profit",
+            )
             if state.position:
                 state.position.partial_taken = True
             return state
@@ -128,39 +221,61 @@ def _manage_position(state: PaperState, last_price: float, slip_bps: float) -> P
 
 
 def execute_paper(state: PaperState, plan: OrderPlan, last_price: float, slip_bps: float, ts: int) -> PaperState:
+    state, _ = execute_paper_with_events(state, plan, last_price=last_price, slip_bps=slip_bps, ts=ts)
+    return state
+
+
+def execute_paper_with_events(
+    state: PaperState,
+    plan: OrderPlan,
+    last_price: float,
+    slip_bps: float,
+    ts: int,
+) -> tuple[PaperState, list[ExecutionEvent]]:
+    events: list[ExecutionEvent] = []
     state.last_price = last_price
 
     # Always enforce in-position management first.
-    state = _manage_position(state, last_price=last_price, slip_bps=slip_bps)
+    state = _manage_position(state, last_price=last_price, slip_bps=slip_bps, ts=ts, events=events)
 
     if plan.action == "hold":
-        return state
+        return state, events
 
     if plan.action == "close":
         if state.position:
             fill = apply_slippage(last_price, slip_bps, side=state.position.side)
-            return close_position(state, fill)
-        return state
+            return (
+                close_position(state, fill, ts=ts, events=events, kind="close", note=plan.note),
+                events,
+            )
+        return state, events
 
     if plan.action == "open":
         if plan.side is None:
-            return state
+            return state, events
         fill = apply_slippage(last_price, slip_bps, side=plan.side)
-        return open_position(state, plan, fill, ts)
+        return open_position(state, plan, fill, ts, events=events, kind="open"), events
 
     if plan.action == "flip":
         if state.position:
             fill_close = apply_slippage(last_price, slip_bps, side=state.position.side)
-            state = close_position(state, fill_close)
+            state = close_position(
+                state,
+                fill_close,
+                ts=ts,
+                events=events,
+                kind="flip_close",
+                note=plan.note,
+            )
         if plan.side is None:
-            return state
+            return state, events
         fill_open = apply_slippage(last_price, slip_bps, side=plan.side)
-        return open_position(state, plan, fill_open, ts)
+        return open_position(state, plan, fill_open, ts, events=events, kind="flip_open"), events
 
     if plan.action == "scale":
         if not state.position or plan.side is None:
-            return state
+            return state, events
         fill = apply_slippage(last_price, slip_bps, side=plan.side)
-        return scale_position(state, plan, fill)
+        return scale_position(state, plan, fill, ts=ts, events=events), events
 
-    return state
+    return state, events
